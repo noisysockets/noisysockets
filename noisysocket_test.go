@@ -139,4 +139,7 @@ func TestNoisySocket(t *testing.T) {
 	})
 
 	require.NoError(t, g.Wait())
+
+	// Wait for everything to close.
+	time.Sleep(time.Second)
 }
