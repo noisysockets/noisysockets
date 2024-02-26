@@ -1,0 +1,10 @@
+# These are just example values, you must replace them with your own!
+listenPort: 12345
+privateKey: 2FM36K8gizo0pdl/Ap4OBcF2E4RazQGvZqLmD4B4xUU=
+ips:
+- 10.7.0.1
+peers:
+- name: client
+  publicKey: 7YVd+U+khir1BQnDULmKA5IoKaj2K6xs/UAt6A2ZOxs=
+  ips:
+  - 10.7.0.2
