@@ -54,13 +54,6 @@ func newSourceSink(localName string, publicKey transport.NoisePublicKey, localAd
 		publicKey:       publicKey,
 	}
 
-	// TCP SACK is disabled by default.
-	sackEnabledOpt := tcpip.TCPSACKEnabled(true)
-	tcpipErr := ss.stack.SetTransportProtocolOption(tcp.ProtocolNumber, &sackEnabledOpt)
-	if tcpipErr != nil {
-		return nil, nil, fmt.Errorf("could not enable TCP SACK: %v", tcpipErr)
-	}
-
 	ss.ep.AddNotify(ss)
 
 	if err := ss.stack.CreateNIC(1, ss.ep); err != nil {
