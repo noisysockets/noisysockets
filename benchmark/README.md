@@ -2,9 +2,9 @@
 
 ## Setup
 
-OS: Debian 12 (Bookworm)
-CPU: Intel(R) Core(TM) i7-7700HQ CPU @ 2.80GHz
-RAM: 16GB
+* OS: Debian 12 (Bookworm)
+* CPU: Intel(R) Core(TM) i7-7700HQ CPU @ 2.80GHz
+* RAM: 16GB
 
 ## Reference
 
