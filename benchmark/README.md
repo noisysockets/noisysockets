@@ -23,6 +23,23 @@ Request durations:
   Max: 58.00ms
 ```
 
+## Netstack (golang to golang):
+
+Using TLS and a MTU of 1500 bytes.
+
+```
+Total requests: 100000
+Total errors: 0
+Total duration: 26.76s
+Requests per second: 3737.35
+Request durations:
+  Median: 0.00ms
+  95th: 11.00ms
+  99th: 41.00ms
+  99.9th: 48.00ms
+  Max: 137.00ms
+```
+
 ## Noisy Sockets (golang to golang):
 
 Golang server and client.
