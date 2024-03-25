@@ -21,28 +21,28 @@ import (
 // It is analogous to the configuration for a WireGuard interface.
 type Config struct {
 	// Name is the hostname of this socket.
-	Name string `yaml:"name"`
+	Name string `yaml:"name" mapstructure:"name"`
 	// ListenPort is the public port on which this socket listens for incoming packets.
-	ListenPort uint16 `yaml:"listenPort"`
+	ListenPort uint16 `yaml:"listenPort" mapstructure:"listenPort"`
 	// PrivateKey is the private key for this socket.
-	PrivateKey string `yaml:"privateKey"`
+	PrivateKey string `yaml:"privateKey" mapstructure:"privateKey"`
 	// IPs is a list of IP addresses assigned to this socket.
-	IPs []string `yaml:"ips"`
+	IPs []string `yaml:"ips" mapstructure:"ips"`
 	// Peers is a list of known peers to which this socket can send and receive packets.
-	Peers []PeerConfig `yaml:"peers"`
+	Peers []PeerConfig `yaml:"peers" mapstructure:"peers"`
 }
 
 // PeerConfig is the configuration for a known peer.
 type PeerConfig struct {
 	// Name is the hostname of the peer.
-	Name string `yaml:"name"`
+	Name string `yaml:"name" mapstructure:"name"`
 	// PublicKey is the public key of the peer.
-	PublicKey string `yaml:"publicKey"`
+	PublicKey string `yaml:"publicKey" mapstructure:"publicKey"`
 	// Endpoint is an optional endpoint to which the peer's packets should be sent.
 	// If not specified, we will attempt to discover the peer's endpoint from its packets.
-	Endpoint string `yaml:"endpoint"`
+	Endpoint string `yaml:"endpoint" mapstructure:"endpoint"`
 	// IPs is a list of IP addresses assigned to the peer.
-	IPs []string `yaml:"ips"`
+	IPs []string `yaml:"ips" mapstructure:"ips"`
 }
 
 // NoisySocket is a noisy socket, it exposes Dial() and Listen() methods compatible with the net package.
