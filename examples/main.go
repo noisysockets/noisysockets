@@ -14,7 +14,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/dpeckett/noisysockets"
+	"github.com/noisysockets/noisysockets"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sys/unix"
 	"gopkg.in/yaml.v3"
@@ -46,7 +46,7 @@ func main() {
 		Commands: []*cli.Command{
 			{
 				Name:  "server",
-				Usage: "Run a Noisy Socket HTTP server",
+				Usage: "Run a Noisy Sockets HTTP server",
 				Flags: append([]cli.Flag{
 					&cli.StringFlag{
 						Name:    "config",
@@ -121,7 +121,7 @@ func main() {
 			},
 			{
 				Name:  "client",
-				Usage: "Run a Noisy Socket HTTP client",
+				Usage: "Run a Noisy Sockets HTTP client",
 				Flags: append([]cli.Flag{
 					&cli.StringFlag{
 						Name:    "config",

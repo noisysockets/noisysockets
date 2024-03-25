@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dpeckett/noisytransport/transport"
+	"github.com/noisysockets/noisysockets/internal/transport"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"

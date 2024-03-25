@@ -12,8 +12,8 @@ import (
 	"net/netip"
 	"syscall"
 
-	"github.com/dpeckett/noisytransport/conn"
-	"github.com/dpeckett/noisytransport/transport"
+	"github.com/noisysockets/noisysockets/internal/conn"
+	"github.com/noisysockets/noisysockets/internal/transport"
 	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -27,6 +27,10 @@ import (
 
 const (
 	queueSize = 1024
+)
+
+var (
+	_ transport.SourceSink = (*sourceSink)(nil)
 )
 
 type sourceSink struct {

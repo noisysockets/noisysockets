@@ -13,8 +13,8 @@ import (
 	"net/netip"
 	"strconv"
 
-	"github.com/dpeckett/noisytransport/conn"
-	"github.com/dpeckett/noisytransport/transport"
+	"github.com/noisysockets/noisysockets/internal/conn"
+	"github.com/noisysockets/noisysockets/internal/transport"
 )
 
 // Config is the configuration for a NoisySocket.

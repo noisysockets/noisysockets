@@ -1,6 +1,10 @@
 # Noisy Sockets
 
-Userspace TCP/IP sockets for [Noisy Transport](https://github.com/dpeckett/noisytransport). Based on [Netstack](https://gvisor.dev/docs/user_guide/networking/) from the [gVisor](https://github.com/google/gvisor) project. Noisy Sockets are compatible with WireGuard and be accessed like any other peer.
+Noisy Sockets is a secure service-to-service communications library based on the [Noise Protocol Framework](https://noiseprotocol.org/). Endpoints are identified by Curve25519 public keys, traffic is encrypted and authenticated using ChaCha20-Poly1305, and sent/received as UDP packets. Noisy Sockets is compatible with [WireGuard](https://www.wireguard.com/).
+
+Noisy Sockets implements a drop-in replacement for the standard Go `net.Conn` interface, allowing it to be used with any existing Go code that uses TCP/IP sockets. It also provides a `net.Listener` implementation for accepting incoming connections. This is implemented using a userspace TCP/IP stack based on [Netstack](https://gvisor.dev/docs/user_guide/networking/) from the [gVisor](https://github.com/google/gvisor) project.
+
+Noisy Sockets is based on code originally from the [WireGuard Go](https://git.zx2c4.com/wireguard-go/) project. We've done a bunch of refactoring to make it more ergonomic to use as a library.
 
 ## Usage
 

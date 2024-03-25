@@ -20,9 +20,9 @@ import (
 
 	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/cheggaaa/pb/v3"
-	"github.com/dpeckett/noisysockets"
-	"github.com/dpeckett/noisysockets/benchmark/synrequests"
 	"github.com/hashicorp/go-multierror"
+	"github.com/noisysockets/noisysockets"
+	"github.com/noisysockets/noisysockets/benchmark/synrequests"
 	"github.com/rogpeppe/go-internal/par"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sys/unix"

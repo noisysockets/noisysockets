@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dpeckett/noisysockets"
-	"github.com/dpeckett/noisytransport/transport"
 	"github.com/neilotoole/slogt"
+	"github.com/noisysockets/noisysockets"
+	"github.com/noisysockets/noisysockets/internal/transport"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
