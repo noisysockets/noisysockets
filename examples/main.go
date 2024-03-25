@@ -59,18 +59,18 @@ func main() {
 				Action: func(c *cli.Context) error {
 					f, err := os.Open(c.String("config"))
 					if err != nil {
-						return fmt.Errorf("failed to open config: %v", err)
+						return fmt.Errorf("failed to open config: %w", err)
 					}
 					defer f.Close()
 
 					var config noisysockets.Config
 					if err := yaml.NewDecoder(f).Decode(&config); err != nil {
-						return fmt.Errorf("failed to decode config: %v", err)
+						return fmt.Errorf("failed to decode config: %w", err)
 					}
 
 					socket, err := noisysockets.NewNoisySocket(logger, &config)
 					if err != nil {
-						return fmt.Errorf("failed to create noisy socket: %v", err)
+						return fmt.Errorf("failed to create noisy socket: %w", err)
 					}
 					defer socket.Close()
 
@@ -134,18 +134,18 @@ func main() {
 				Action: func(c *cli.Context) error {
 					f, err := os.Open(c.String("config"))
 					if err != nil {
-						return fmt.Errorf("failed to open config: %v", err)
+						return fmt.Errorf("failed to open config: %w", err)
 					}
 					defer f.Close()
 
 					var config noisysockets.Config
 					if err := yaml.NewDecoder(f).Decode(&config); err != nil {
-						return fmt.Errorf("failed to decode config: %v", err)
+						return fmt.Errorf("failed to decode config: %w", err)
 					}
 
 					socket, err := noisysockets.NewNoisySocket(logger, &config)
 					if err != nil {
-						return fmt.Errorf("failed to create noisy socket: %v", err)
+						return fmt.Errorf("failed to create noisy socket: %w", err)
 					}
 					defer socket.Close()
 
@@ -162,7 +162,7 @@ func main() {
 
 					resp, err := client.Get(url)
 					if err != nil {
-						return fmt.Errorf("failed to make request: %v", err)
+						return fmt.Errorf("failed to make request: %w", err)
 					}
 					defer resp.Body.Close()
 
@@ -172,7 +172,7 @@ func main() {
 
 					body, err := io.ReadAll(resp.Body)
 					if err != nil {
-						return fmt.Errorf("failed to read body: %v", err)
+						return fmt.Errorf("failed to read body: %w", err)
 					}
 
 					logger.Info("Got", "status", resp.Status, "body", string(body))

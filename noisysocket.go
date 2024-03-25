@@ -28,6 +28,8 @@ type Config struct {
 	PrivateKey string `yaml:"privateKey" mapstructure:"privateKey"`
 	// IPs is a list of IP addresses assigned to this socket.
 	IPs []string `yaml:"ips" mapstructure:"ips"`
+	// DefaultGatewayName is the optional hostname of the peer to use as the default gateway for unknown traffic.
+	DefaultGatewayName string `yaml:"defaultGatewayName" mapstructure:"defaultGatewayName"`
 	// Peers is a list of known peers to which this socket can send and receive packets.
 	Peers []PeerConfig `yaml:"peers" mapstructure:"peers"`
 }
@@ -55,7 +57,7 @@ type NoisySocket struct {
 func NewNoisySocket(logger *slog.Logger, config *Config) (*NoisySocket, error) {
 	var privateKey transport.NoisePrivateKey
 	if err := privateKey.FromString(config.PrivateKey); err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %v", err)
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 
 	publicKey := privateKey.PublicKey()
@@ -64,14 +66,14 @@ func NewNoisySocket(logger *slog.Logger, config *Config) (*NoisySocket, error) {
 	for _, ip := range config.IPs {
 		addr, err := netip.ParseAddr(ip)
 		if err != nil {
-			return nil, fmt.Errorf("could not parse address: %v", err)
+			return nil, fmt.Errorf("could not parse address: %w", err)
 		}
 		addrs = append(addrs, addr)
 	}
 
 	sourceSink, n, err := newSourceSink(config.Name, publicKey, addrs)
 	if err != nil {
-		return nil, fmt.Errorf("could not create source sink: %v", err)
+		return nil, fmt.Errorf("could not create source sink: %w", err)
 	}
 
 	t := transport.NewTransport(sourceSink, conn.NewStdNetBind(), logger)
@@ -79,13 +81,13 @@ func NewNoisySocket(logger *slog.Logger, config *Config) (*NoisySocket, error) {
 	t.SetPrivateKey(privateKey)
 
 	if err := t.UpdatePort(config.ListenPort); err != nil {
-		return nil, fmt.Errorf("failed to update port: %v", err)
+		return nil, fmt.Errorf("failed to update port: %w", err)
 	}
 
 	for _, peerConfig := range config.Peers {
 		var peerPublicKey transport.NoisePublicKey
 		if err := peerPublicKey.FromString(peerConfig.PublicKey); err != nil {
-			return nil, fmt.Errorf("failed to parse peer public key: %v", err)
+			return nil, fmt.Errorf("failed to parse peer public key: %w", err)
 		}
 
 		var peerAddrs []netip.Addr
@@ -101,28 +103,28 @@ func NewNoisySocket(logger *slog.Logger, config *Config) (*NoisySocket, error) {
 
 		peer, err := t.NewPeer(peerPublicKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create peer: %v", err)
+			return nil, fmt.Errorf("failed to create peer: %w", err)
 		}
 
 		if peerConfig.Endpoint != "" {
 			peerEndpointHost, peerEndpointPortStr, err := net.SplitHostPort(peerConfig.Endpoint)
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse peer endpoint: %v", err)
+				return nil, fmt.Errorf("failed to parse peer endpoint: %w", err)
 			}
 
 			peerEndpointAddrs, err := net.LookupHost(peerEndpointHost)
 			if err != nil {
-				return nil, fmt.Errorf("failed to resolve peer address: %v", err)
+				return nil, fmt.Errorf("failed to resolve peer address: %w", err)
 			}
 
 			peerEndpointAddr, err := netip.ParseAddr(peerEndpointAddrs[0])
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse peer address: %v", err)
+				return nil, fmt.Errorf("failed to parse peer address: %w", err)
 			}
 
 			peerEndpointPort, err := strconv.Atoi(peerEndpointPortStr)
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse peer port: %v", err)
+				return nil, fmt.Errorf("failed to parse peer port: %w", err)
 			}
 
 			peer.SetEndpointFromPacket(&conn.StdNetEndpoint{
@@ -131,8 +133,14 @@ func NewNoisySocket(logger *slog.Logger, config *Config) (*NoisySocket, error) {
 		}
 	}
 
+	if config.DefaultGatewayName != "" {
+		if err := sourceSink.SetDefaultGateway(config.DefaultGatewayName); err != nil {
+			return nil, fmt.Errorf("failed to set default gateway: %w", err)
+		}
+	}
+
 	if err := t.Up(); err != nil {
-		return nil, fmt.Errorf("failed to bring transport up: %v", err)
+		return nil, fmt.Errorf("failed to bring transport up: %w", err)
 	}
 
 	return &NoisySocket{

@@ -72,7 +72,7 @@ func main() {
 				Action: func(c *cli.Context) error {
 					randBuf := make([]byte, maxMessageSize)
 					if _, err := rand.Read(randBuf); err != nil {
-						return fmt.Errorf("failed to read random data: %v", err)
+						return fmt.Errorf("failed to read random data: %w", err)
 					}
 
 					contentLengths := make([]int64, 1000)
@@ -92,7 +92,7 @@ func main() {
 
 					cert, err := generateSelfSignedCertificate()
 					if err != nil {
-						return fmt.Errorf("failed to generate self-signed certificate: %v", err)
+						return fmt.Errorf("failed to generate self-signed certificate: %w", err)
 					}
 
 					srv := &http.Server{

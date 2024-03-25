@@ -41,6 +41,7 @@ type sourceSink struct {
 	peerAddresses   map[transport.NoisePublicKey][]netip.Addr
 	fromPeerAddress map[netip.Addr]transport.NoisePublicKey
 	publicKey       transport.NoisePublicKey
+	defaultGateway  *transport.NoisePublicKey
 }
 
 func newSourceSink(localName string, publicKey transport.NoisePublicKey, localAddrs []netip.Addr) (*sourceSink, *noisyNet, error) {
@@ -116,6 +117,17 @@ func (ss *sourceSink) AddPeer(name string, publicKey transport.NoisePublicKey, a
 	}
 }
 
+func (ss *sourceSink) SetDefaultGateway(name string) error {
+	publicKey, ok := ss.peerNames[name]
+	if !ok {
+		return fmt.Errorf("unknown peer name")
+	}
+
+	ss.defaultGateway = &publicKey
+
+	return nil
+}
+
 func (ss *sourceSink) Close() error {
 	ss.stack.RemoveNIC(1)
 	ss.stack.Close()
@@ -160,7 +172,7 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []transport.
 		n, err := view.Read(bufs[idx][offset:])
 		view.Release()
 		if err != nil {
-			return fmt.Errorf("could not read packet: %v", err)
+			return fmt.Errorf("could not read packet: %w", err)
 		}
 
 		sizes[idx] = n

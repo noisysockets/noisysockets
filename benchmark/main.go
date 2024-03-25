@@ -74,24 +74,24 @@ func main() {
 				Action: func(c *cli.Context) error {
 					f, err := os.Open(c.String("config"))
 					if err != nil {
-						return fmt.Errorf("failed to open config: %v", err)
+						return fmt.Errorf("failed to open config: %w", err)
 					}
 					defer f.Close()
 
 					var config noisysockets.Config
 					if err := yaml.NewDecoder(f).Decode(&config); err != nil {
-						return fmt.Errorf("failed to decode config: %v", err)
+						return fmt.Errorf("failed to decode config: %w", err)
 					}
 
 					socket, err := noisysockets.NewNoisySocket(logger, &config)
 					if err != nil {
-						return fmt.Errorf("failed to create noisy socket: %v", err)
+						return fmt.Errorf("failed to create noisy socket: %w", err)
 					}
 					defer socket.Close()
 
 					randBuf := make([]byte, maxMessageSize)
 					if _, err := rand.Read(randBuf); err != nil {
-						return fmt.Errorf("failed to read random data: %v", err)
+						return fmt.Errorf("failed to read random data: %w", err)
 					}
 
 					contentLengths := make([]int64, 1000)
@@ -164,18 +164,18 @@ func main() {
 				Action: func(c *cli.Context) error {
 					f, err := os.Open(c.String("config"))
 					if err != nil {
-						return fmt.Errorf("failed to open config: %v", err)
+						return fmt.Errorf("failed to open config: %w", err)
 					}
 					defer f.Close()
 
 					var config noisysockets.Config
 					if err := yaml.NewDecoder(f).Decode(&config); err != nil {
-						return fmt.Errorf("failed to decode config: %v", err)
+						return fmt.Errorf("failed to decode config: %w", err)
 					}
 
 					socket, err := noisysockets.NewNoisySocket(logger, &config)
 					if err != nil {
-						return fmt.Errorf("failed to create noisy socket: %v", err)
+						return fmt.Errorf("failed to create noisy socket: %w", err)
 					}
 					defer socket.Close()
 

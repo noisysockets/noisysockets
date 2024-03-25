@@ -78,7 +78,7 @@ func main() {
 
 		addr, err := netip.ParseAddr("10.7.0.1")
 		if err != nil {
-			return fmt.Errorf("could not parse address: %v", err)
+			return fmt.Errorf("could not parse address: %w", err)
 		}
 
 		protoAddr := tcpip.ProtocolAddress{
@@ -94,7 +94,7 @@ func main() {
 
 		randBuf := make([]byte, maxMessageSize)
 		if _, err := rand.Read(randBuf); err != nil {
-			return fmt.Errorf("failed to read random data: %v", err)
+			return fmt.Errorf("failed to read random data: %w", err)
 		}
 
 		contentLengths := make([]int64, 1000)
@@ -114,7 +114,7 @@ func main() {
 
 		cert, err := generateSelfSignedCertificate()
 		if err != nil {
-			return fmt.Errorf("failed to generate self-signed certificate: %v", err)
+			return fmt.Errorf("failed to generate self-signed certificate: %w", err)
 		}
 
 		srv := &http.Server{
@@ -134,7 +134,7 @@ func main() {
 			Port: 443,
 		}, header.IPv4ProtocolNumber)
 		if err != nil {
-			return fmt.Errorf("failed to listen: %v", err)
+			return fmt.Errorf("failed to listen: %w", err)
 		}
 		defer lis.Close()
 
@@ -149,7 +149,7 @@ func main() {
 		}()
 
 		if err := srv.Serve(tls.NewListener(lis, srv.TLSConfig)); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("failed to serve: %v", err)
+			return fmt.Errorf("failed to serve: %w", err)
 		}
 
 		return nil
@@ -193,7 +193,7 @@ func main() {
 		t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 			addrPort, err := netip.ParseAddrPort(addr)
 			if err != nil {
-				return nil, fmt.Errorf("could not parse address: %v", err)
+				return nil, fmt.Errorf("could not parse address: %w", err)
 			}
 
 			return gonet.DialContextTCP(ctx, s, tcpip.FullAddress{
