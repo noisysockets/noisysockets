@@ -44,7 +44,7 @@ type sourceSink struct {
 	defaultGateway  *transport.NoisePublicKey
 }
 
-func newSourceSink(localName string, publicKey transport.NoisePublicKey, localAddrs []netip.Addr) (*sourceSink, *noisyNet, error) {
+func newSourceSink(localName string, publicKey transport.NoisePublicKey, localAddrs []netip.Addr, defaultGateway *transport.NoisePublicKey, defaultGatewayAddrs []netip.Addr) (*sourceSink, *noisyNet, error) {
 	ss := &sourceSink{
 		stack: stack.New(stack.Options{
 			NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
@@ -57,6 +57,7 @@ func newSourceSink(localName string, publicKey transport.NoisePublicKey, localAd
 		peerAddresses:   make(map[transport.NoisePublicKey][]netip.Addr),
 		fromPeerAddress: make(map[netip.Addr]transport.NoisePublicKey),
 		publicKey:       publicKey,
+		defaultGateway:  defaultGateway,
 	}
 
 	ss.ep.AddNotify(ss)
@@ -89,10 +90,38 @@ func newSourceSink(localName string, publicKey transport.NoisePublicKey, localAd
 		}
 	}
 	if hasV4 {
-		ss.stack.AddRoute(tcpip.Route{Destination: header.IPv4EmptySubnet, NIC: 1})
+		var gatewayV4 tcpip.Address
+		if defaultGateway != nil {
+			for _, addr := range defaultGatewayAddrs {
+				if addr.Is4() {
+					gatewayV4 = tcpip.AddrFromSlice(addr.AsSlice())
+					break
+				}
+			}
+		}
+
+		ss.stack.AddRoute(tcpip.Route{
+			Destination: header.IPv4EmptySubnet,
+			NIC:         1,
+			Gateway:     gatewayV4,
+		})
 	}
 	if hasV6 {
-		ss.stack.AddRoute(tcpip.Route{Destination: header.IPv6EmptySubnet, NIC: 1})
+		var gatewayV6 tcpip.Address
+		if defaultGateway != nil {
+			for _, addr := range defaultGatewayAddrs {
+				if addr.Is6() {
+					gatewayV6 = tcpip.AddrFromSlice(addr.AsSlice())
+					break
+				}
+			}
+		}
+
+		ss.stack.AddRoute(tcpip.Route{
+			Destination: header.IPv6EmptySubnet,
+			NIC:         1,
+			Gateway:     gatewayV6,
+		})
 	}
 
 	n := &noisyNet{
@@ -115,17 +144,6 @@ func (ss *sourceSink) AddPeer(name string, publicKey transport.NoisePublicKey, a
 		ss.peerAddresses[publicKey] = append(ss.peerAddresses[publicKey], addr)
 		ss.fromPeerAddress[addr] = publicKey
 	}
-}
-
-func (ss *sourceSink) SetDefaultGateway(name string) error {
-	publicKey, ok := ss.peerNames[name]
-	if !ok {
-		return fmt.Errorf("unknown peer name")
-	}
-
-	ss.defaultGateway = &publicKey
-
-	return nil
 }
 
 func (ss *sourceSink) Close() error {
@@ -165,7 +183,11 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []transport.
 		var ok bool
 		destinations[idx], ok = ss.fromPeerAddress[peerAddr]
 		if !ok {
-			return fmt.Errorf("unknown destination address")
+			if ss.defaultGateway == nil {
+				return fmt.Errorf("unknown destination address")
+			}
+
+			destinations[idx] = *ss.defaultGateway
 		}
 
 		view := pkt.ToView()

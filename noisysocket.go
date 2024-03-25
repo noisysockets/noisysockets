@@ -71,7 +71,37 @@ func NewNoisySocket(logger *slog.Logger, config *Config) (*NoisySocket, error) {
 		addrs = append(addrs, addr)
 	}
 
-	sourceSink, n, err := newSourceSink(config.Name, publicKey, addrs)
+	var defaultGateway *transport.NoisePublicKey
+	var defaultGatewayAddrs []netip.Addr
+	if config.DefaultGatewayName != "" {
+		var defaultGatewayPeerConfig *PeerConfig
+		for i := range config.Peers {
+			if config.Peers[i].Name == config.DefaultGatewayName {
+				defaultGatewayPeerConfig = &config.Peers[i]
+				break
+			}
+		}
+
+		if defaultGatewayPeerConfig == nil {
+			return nil, fmt.Errorf("could not find default gateway peer %q", config.DefaultGatewayName)
+		}
+
+		defaultGateway = &transport.NoisePublicKey{}
+		if err := defaultGateway.FromString(defaultGatewayPeerConfig.PublicKey); err != nil {
+			return nil, fmt.Errorf("could not parse default gateway public key: %w", err)
+		}
+
+		for _, ip := range defaultGatewayPeerConfig.IPs {
+			addr, err := netip.ParseAddr(ip)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse default gateway address: %w", err)
+			}
+
+			defaultGatewayAddrs = append(defaultGatewayAddrs, addr)
+		}
+	}
+
+	sourceSink, n, err := newSourceSink(config.Name, publicKey, addrs, defaultGateway, defaultGatewayAddrs)
 	if err != nil {
 		return nil, fmt.Errorf("could not create source sink: %w", err)
 	}
@@ -130,12 +160,6 @@ func NewNoisySocket(logger *slog.Logger, config *Config) (*NoisySocket, error) {
 			peer.SetEndpointFromPacket(&conn.StdNetEndpoint{
 				AddrPort: netip.AddrPortFrom(peerEndpointAddr, uint16(peerEndpointPort)),
 			})
-		}
-	}
-
-	if config.DefaultGatewayName != "" {
-		if err := sourceSink.SetDefaultGateway(config.DefaultGatewayName); err != nil {
-			return nil, fmt.Errorf("failed to set default gateway: %w", err)
 		}
 	}
 
