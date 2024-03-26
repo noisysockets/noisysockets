@@ -17,6 +17,7 @@ import (
 
 	"github.com/neilotoole/slogt"
 	"github.com/noisysockets/noisysockets"
+	"github.com/noisysockets/noisysockets/config/v1alpha1"
 	"github.com/noisysockets/noisysockets/internal/transport"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -35,12 +36,12 @@ func TestNoisySocket(t *testing.T) {
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		config := noisysockets.Config{
+		conf := v1alpha1.WireGuardConfig{
 			Name:       "server",
 			ListenPort: 12345,
 			PrivateKey: serverPrivateKey.String(),
 			IPs:        []string{"10.7.0.1"},
-			Peers: []noisysockets.PeerConfig{
+			Peers: []v1alpha1.WireGuardPeerConfig{
 				{
 					PublicKey: clientPrivateKey.PublicKey().String(),
 					IPs:       []string{"10.7.0.2"},
@@ -48,7 +49,7 @@ func TestNoisySocket(t *testing.T) {
 			},
 		}
 
-		socket, err := noisysockets.NewNoisySocket(logger, &config)
+		socket, err := noisysockets.NewNoisySocket(logger, &conf)
 		if err != nil {
 			return err
 		}
@@ -86,12 +87,12 @@ func TestNoisySocket(t *testing.T) {
 	g.Go(func() error {
 		defer cancel()
 
-		config := noisysockets.Config{
+		conf := v1alpha1.WireGuardConfig{
 			Name:       "client",
 			ListenPort: 12346,
 			PrivateKey: clientPrivateKey.String(),
 			IPs:        []string{"10.7.0.2"},
-			Peers: []noisysockets.PeerConfig{
+			Peers: []v1alpha1.WireGuardPeerConfig{
 				{
 					Name:      "server",
 					PublicKey: serverPrivateKey.PublicKey().String(),
@@ -101,7 +102,7 @@ func TestNoisySocket(t *testing.T) {
 			},
 		}
 
-		socket, err := noisysockets.NewNoisySocket(logger, &config)
+		socket, err := noisysockets.NewNoisySocket(logger, &conf)
 		if err != nil {
 			return err
 		}

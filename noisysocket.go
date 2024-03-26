@@ -13,39 +13,10 @@ import (
 	"net/netip"
 	"strconv"
 
+	"github.com/noisysockets/noisysockets/config/v1alpha1"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/transport"
 )
-
-// Config is the configuration for a NoisySocket.
-// It is analogous to the configuration for a WireGuard interface.
-type Config struct {
-	// Name is the hostname of this socket.
-	Name string `yaml:"name" mapstructure:"name"`
-	// ListenPort is the public port on which this socket listens for incoming packets.
-	ListenPort uint16 `yaml:"listenPort" mapstructure:"listenPort"`
-	// PrivateKey is the private key for this socket.
-	PrivateKey string `yaml:"privateKey" mapstructure:"privateKey"`
-	// IPs is a list of IP addresses assigned to this socket.
-	IPs []string `yaml:"ips" mapstructure:"ips"`
-	// DefaultGatewayName is the optional hostname of the peer to use as the default gateway for unknown traffic.
-	DefaultGatewayName string `yaml:"defaultGatewayName" mapstructure:"defaultGatewayName"`
-	// Peers is a list of known peers to which this socket can send and receive packets.
-	Peers []PeerConfig `yaml:"peers" mapstructure:"peers"`
-}
-
-// PeerConfig is the configuration for a known peer.
-type PeerConfig struct {
-	// Name is the hostname of the peer.
-	Name string `yaml:"name" mapstructure:"name"`
-	// PublicKey is the public key of the peer.
-	PublicKey string `yaml:"publicKey" mapstructure:"publicKey"`
-	// Endpoint is an optional endpoint to which the peer's packets should be sent.
-	// If not specified, we will attempt to discover the peer's endpoint from its packets.
-	Endpoint string `yaml:"endpoint" mapstructure:"endpoint"`
-	// IPs is a list of IP addresses assigned to the peer.
-	IPs []string `yaml:"ips" mapstructure:"ips"`
-}
 
 // NoisySocket is a noisy socket, it exposes Dial() and Listen() methods compatible with the net package.
 type NoisySocket struct {
@@ -54,16 +25,16 @@ type NoisySocket struct {
 }
 
 // NewNoisySocket creates a new NoisySocket.
-func NewNoisySocket(logger *slog.Logger, config *Config) (*NoisySocket, error) {
+func NewNoisySocket(logger *slog.Logger, conf *v1alpha1.WireGuardConfig) (*NoisySocket, error) {
 	var privateKey transport.NoisePrivateKey
-	if err := privateKey.FromString(config.PrivateKey); err != nil {
+	if err := privateKey.FromString(conf.PrivateKey); err != nil {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 
 	publicKey := privateKey.PublicKey()
 
 	var addrs []netip.Addr
-	for _, ip := range config.IPs {
+	for _, ip := range conf.IPs {
 		addr, err := netip.ParseAddr(ip)
 		if err != nil {
 			return nil, fmt.Errorf("could not parse address: %w", err)
@@ -73,25 +44,25 @@ func NewNoisySocket(logger *slog.Logger, config *Config) (*NoisySocket, error) {
 
 	var defaultGateway *transport.NoisePublicKey
 	var defaultGatewayAddrs []netip.Addr
-	if config.DefaultGatewayName != "" {
-		var defaultGatewayPeerConfig *PeerConfig
-		for i := range config.Peers {
-			if config.Peers[i].Name == config.DefaultGatewayName {
-				defaultGatewayPeerConfig = &config.Peers[i]
+	if conf.DefaultGatewayName != "" {
+		var defaultGatewayPeerConf *v1alpha1.WireGuardPeerConfig
+		for i := range conf.Peers {
+			if conf.Peers[i].Name == conf.DefaultGatewayName {
+				defaultGatewayPeerConf = &conf.Peers[i]
 				break
 			}
 		}
 
-		if defaultGatewayPeerConfig == nil {
-			return nil, fmt.Errorf("could not find default gateway peer %q", config.DefaultGatewayName)
+		if defaultGatewayPeerConf == nil {
+			return nil, fmt.Errorf("could not find default gateway peer %q", conf.DefaultGatewayName)
 		}
 
 		defaultGateway = &transport.NoisePublicKey{}
-		if err := defaultGateway.FromString(defaultGatewayPeerConfig.PublicKey); err != nil {
+		if err := defaultGateway.FromString(defaultGatewayPeerConf.PublicKey); err != nil {
 			return nil, fmt.Errorf("could not parse default gateway public key: %w", err)
 		}
 
-		for _, ip := range defaultGatewayPeerConfig.IPs {
+		for _, ip := range defaultGatewayPeerConf.IPs {
 			addr, err := netip.ParseAddr(ip)
 			if err != nil {
 				return nil, fmt.Errorf("could not parse default gateway address: %w", err)
@@ -101,7 +72,7 @@ func NewNoisySocket(logger *slog.Logger, config *Config) (*NoisySocket, error) {
 		}
 	}
 
-	sourceSink, n, err := newSourceSink(config.Name, publicKey, addrs, defaultGateway, defaultGatewayAddrs)
+	sourceSink, n, err := newSourceSink(conf.Name, publicKey, addrs, defaultGateway, defaultGatewayAddrs)
 	if err != nil {
 		return nil, fmt.Errorf("could not create source sink: %w", err)
 	}
@@ -110,18 +81,18 @@ func NewNoisySocket(logger *slog.Logger, config *Config) (*NoisySocket, error) {
 
 	t.SetPrivateKey(privateKey)
 
-	if err := t.UpdatePort(config.ListenPort); err != nil {
+	if err := t.UpdatePort(conf.ListenPort); err != nil {
 		return nil, fmt.Errorf("failed to update port: %w", err)
 	}
 
-	for _, peerConfig := range config.Peers {
+	for _, peerConf := range conf.Peers {
 		var peerPublicKey transport.NoisePublicKey
-		if err := peerPublicKey.FromString(peerConfig.PublicKey); err != nil {
+		if err := peerPublicKey.FromString(peerConf.PublicKey); err != nil {
 			return nil, fmt.Errorf("failed to parse peer public key: %w", err)
 		}
 
 		var peerAddrs []netip.Addr
-		for _, ip := range peerConfig.IPs {
+		for _, ip := range peerConf.IPs {
 			addr, err := netip.ParseAddr(ip)
 			if err != nil {
 				return nil, fmt.Errorf("could not parse peer address %q: %v", ip, err)
@@ -129,15 +100,15 @@ func NewNoisySocket(logger *slog.Logger, config *Config) (*NoisySocket, error) {
 			peerAddrs = append(peerAddrs, addr)
 		}
 
-		sourceSink.AddPeer(peerConfig.Name, peerPublicKey, peerAddrs)
+		sourceSink.AddPeer(peerConf.Name, peerPublicKey, peerAddrs)
 
 		peer, err := t.NewPeer(peerPublicKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create peer: %w", err)
 		}
 
-		if peerConfig.Endpoint != "" {
-			peerEndpointHost, peerEndpointPortStr, err := net.SplitHostPort(peerConfig.Endpoint)
+		if peerConf.Endpoint != "" {
+			peerEndpointHost, peerEndpointPortStr, err := net.SplitHostPort(peerConf.Endpoint)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse peer endpoint: %w", err)
 			}

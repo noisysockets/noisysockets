@@ -23,10 +23,10 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/noisysockets/noisysockets"
 	"github.com/noisysockets/noisysockets/benchmark/synrequests"
+	"github.com/noisysockets/noisysockets/config"
 	"github.com/rogpeppe/go-internal/par"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sys/unix"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -72,18 +72,12 @@ func main() {
 				}, sharedFlags...),
 				Before: before,
 				Action: func(c *cli.Context) error {
-					f, err := os.Open(c.String("config"))
+					conf, err := config.FromYAML(c.String("config"))
 					if err != nil {
-						return fmt.Errorf("failed to open config: %w", err)
-					}
-					defer f.Close()
-
-					var config noisysockets.Config
-					if err := yaml.NewDecoder(f).Decode(&config); err != nil {
-						return fmt.Errorf("failed to decode config: %w", err)
+						return fmt.Errorf("failed to read config: %w", err)
 					}
 
-					socket, err := noisysockets.NewNoisySocket(logger, &config)
+					socket, err := noisysockets.NewNoisySocket(logger, conf)
 					if err != nil {
 						return fmt.Errorf("failed to create noisy socket: %w", err)
 					}
@@ -162,18 +156,12 @@ func main() {
 				}, sharedFlags...),
 				Before: before,
 				Action: func(c *cli.Context) error {
-					f, err := os.Open(c.String("config"))
+					conf, err := config.FromYAML(c.String("config"))
 					if err != nil {
-						return fmt.Errorf("failed to open config: %w", err)
-					}
-					defer f.Close()
-
-					var config noisysockets.Config
-					if err := yaml.NewDecoder(f).Decode(&config); err != nil {
-						return fmt.Errorf("failed to decode config: %w", err)
+						return fmt.Errorf("failed to read config: %w", err)
 					}
 
-					socket, err := noisysockets.NewNoisySocket(logger, &config)
+					socket, err := noisysockets.NewNoisySocket(logger, conf)
 					if err != nil {
 						return fmt.Errorf("failed to create noisy socket: %w", err)
 					}
