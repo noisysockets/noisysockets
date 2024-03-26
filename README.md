@@ -10,6 +10,14 @@ Noisy Sockets is based on code originally from the [WireGuard Go](https://git.zx
 
 An example of how to use Noisy Sockets can be found in the [examples](./examples) directory.
 
+### gVisor Dependency
+
+When you import Noisy Sockets Go Modules will attempt to use the gVisor master branch. The master branch cannot be used as a library, so you will need to explictly import the synthetic go branch in your project. If you don't do this you will see some strange build errors.
+
+```shell
+go get -u gvisor.dev/gvisor@go
+```
+
 ## Performance
 
 Surprisingly good, I've been able to saturate a 1Gbps link with approximately two CPU cores and a single noisy socket. Interestingly it appears to outperform the kernel implementation of WireGuard.
