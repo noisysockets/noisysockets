@@ -23,6 +23,8 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
+type DialContextFn func(ctx context.Context, network, address string) (net.Conn, error)
+
 var (
 	errCanceled          = errors.New("operation was canceled")
 	errTimeout           = errors.New("i/o timeout")
@@ -39,13 +41,14 @@ type noisyNet struct {
 	localAddrs    []netip.Addr
 	peerNames     map[string]transport.NoisePublicKey
 	peerAddresses map[transport.NoisePublicKey][]netip.Addr
+	dnsServers    []netip.Addr
 }
 
 // LookupHost resolves host names (encoded public keys) to IP addresses.
 func (n *noisyNet) LookupHost(host string) ([]string, error) {
 	// Host is an IP address.
-	if ip := net.ParseIP(host); ip != nil {
-		return []string{ip.String()}, nil
+	if addr, err := netip.ParseAddr(host); err == nil {
+		return []string{addr.String()}, nil
 	}
 
 	// Host is the name of the local node.
@@ -64,6 +67,19 @@ func (n *noisyNet) LookupHost(host string) ([]string, error) {
 			addrs = append(addrs, addr.String())
 		}
 
+		return addrs, nil
+	}
+
+	// Host is a DNS name.
+	if len(n.dnsServers) > 0 {
+		var err error
+		addrs, err = resolveHost(n.dnsServers, host, n.DialContext)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if len(addrs) > 0 {
 		return addrs, nil
 	}
 

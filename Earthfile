@@ -14,8 +14,15 @@ lint:
   RUN golangci-lint run --timeout 5m ./...
 
 test:
+  FROM +tools
   COPY go.mod go.sum .
   RUN go mod download
   COPY . .
-  RUN go test -coverprofile=coverage.out -v ./...
+  WITH DOCKER
+    RUN go test -timeout=120s -coverprofile=coverage.out -v ./...
+  END
   SAVE ARTIFACT coverage.out AS LOCAL coverage.out
+
+tools:
+  RUN apt update && apt install -y ca-certificates curl jq
+  RUN curl -fsSL https://get.docker.com | bash

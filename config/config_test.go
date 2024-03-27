@@ -16,7 +16,7 @@ func TestFromYAML(t *testing.T) {
 	conf, err := config.FromYAML("testdata/config.yaml")
 	require.NoError(t, err)
 
-	require.Equal(t, "WireGuardConfig", conf.GetKind())
+	require.Equal(t, "Config", conf.GetKind())
 	require.Equal(t, "noisysockets.github.com/v1alpha1", conf.GetAPIVersion())
 
 	// Just check a few fields to make sure the config was parsed correctly.

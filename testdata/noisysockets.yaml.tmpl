@@ -1,12 +1,14 @@
 apiVersion: noisysockets.github.com/v1alpha1
 kind: Config
-listenPort: 12346
 privateKey: SFN1gntnAutVFefwrPDlM1W2/LGWaRSn2hq06TvL2GY=
 ips:
 - 10.7.0.2
+defaultGatewayPeerName: gateway
+dnsServers:
+- {{ .DNSServer }}
 peers:
-- name: server
+- name: gateway
   publicKey: 6cvvZyj+EVL4DHjUKeVF7EUBfgR2mJO4php2Gdv9FVw=
-  endpoint: 127.0.0.1:12345
+  endpoint: {{ .Endpoint }}
   ips:
   - 10.7.0.1

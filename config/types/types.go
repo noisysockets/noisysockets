@@ -6,7 +6,9 @@
 package types
 
 type TypeMeta struct {
-	Kind       string `yaml:"kind" mapstructure:"kind"`
+	// Kind is the kind of the resource.
+	Kind string `yaml:"kind" mapstructure:"kind"`
+	// APIVersion is the version of the API.
 	APIVersion string `yaml:"apiVersion" mapstructure:"apiVersion"`
 }
 

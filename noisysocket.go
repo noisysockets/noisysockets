@@ -25,7 +25,7 @@ type NoisySocket struct {
 }
 
 // NewNoisySocket creates a new NoisySocket.
-func NewNoisySocket(logger *slog.Logger, conf *v1alpha1.WireGuardConfig) (*NoisySocket, error) {
+func NewNoisySocket(logger *slog.Logger, conf *v1alpha1.Config) (*NoisySocket, error) {
 	var privateKey transport.NoisePrivateKey
 	if err := privateKey.FromString(conf.PrivateKey); err != nil {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
@@ -44,17 +44,17 @@ func NewNoisySocket(logger *slog.Logger, conf *v1alpha1.WireGuardConfig) (*Noisy
 
 	var defaultGateway *transport.NoisePublicKey
 	var defaultGatewayAddrs []netip.Addr
-	if conf.DefaultGatewayName != "" {
+	if conf.DefaultGatewayPeerName != "" {
 		var defaultGatewayPeerConf *v1alpha1.WireGuardPeerConfig
 		for i := range conf.Peers {
-			if conf.Peers[i].Name == conf.DefaultGatewayName {
+			if conf.Peers[i].Name == conf.DefaultGatewayPeerName {
 				defaultGatewayPeerConf = &conf.Peers[i]
 				break
 			}
 		}
 
 		if defaultGatewayPeerConf == nil {
-			return nil, fmt.Errorf("could not find default gateway peer %q", conf.DefaultGatewayName)
+			return nil, fmt.Errorf("could not find default gateway peer %q", conf.DefaultGatewayPeerName)
 		}
 
 		defaultGateway = &transport.NoisePublicKey{}
@@ -72,7 +72,17 @@ func NewNoisySocket(logger *slog.Logger, conf *v1alpha1.WireGuardConfig) (*Noisy
 		}
 	}
 
-	sourceSink, n, err := newSourceSink(conf.Name, publicKey, addrs, defaultGateway, defaultGatewayAddrs)
+	var dnsServers []netip.Addr
+	for _, ip := range conf.DNSServers {
+		addr, err := netip.ParseAddr(ip)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse DNS server address: %w", err)
+		}
+
+		dnsServers = append(dnsServers, addr)
+	}
+
+	sourceSink, n, err := newSourceSink(conf.Name, publicKey, addrs, defaultGateway, defaultGatewayAddrs, dnsServers)
 	if err != nil {
 		return nil, fmt.Errorf("could not create source sink: %w", err)
 	}

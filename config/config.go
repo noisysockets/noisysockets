@@ -14,15 +14,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func FromYAML(confPath string) (conf *latest.WireGuardConfig, err error) {
-	confBytes, err := os.ReadFile(confPath)
+func FromYAML(configPath string) (conf *latest.Config, err error) {
+	confBytes, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file %q: %w", confPath, err)
+		return nil, fmt.Errorf("failed to read config file %q: %w", configPath, err)
 	}
 
 	var typeMeta types.TypeMeta
 	if err := yaml.Unmarshal(confBytes, &typeMeta); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal type meta from config file %q: %w", confPath, err)
+		return nil, fmt.Errorf("failed to unmarshal type meta from config file %q: %w", configPath, err)
 	}
 
 	var versionedConf types.Config
@@ -37,7 +37,7 @@ func FromYAML(confPath string) (conf *latest.WireGuardConfig, err error) {
 	}
 
 	if err := yaml.Unmarshal(confBytes, versionedConf); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config from config file %q: %w", confPath, err)
+		return nil, fmt.Errorf("failed to unmarshal config from config file %q: %w", configPath, err)
 	}
 
 	if versionedConf.GetAPIVersion() != latest.ApiVersion {
@@ -46,7 +46,7 @@ func FromYAML(confPath string) (conf *latest.WireGuardConfig, err error) {
 			return nil, fmt.Errorf("failed to migrate config: %w", err)
 		}
 	} else {
-		conf = versionedConf.(*latest.WireGuardConfig)
+		conf = versionedConf.(*latest.Config)
 	}
 
 	// TODO: validate config.
@@ -54,7 +54,7 @@ func FromYAML(confPath string) (conf *latest.WireGuardConfig, err error) {
 	return conf, nil
 }
 
-func migrate(_ types.Config) (*latest.WireGuardConfig, error) {
+func migrate(_ types.Config) (*latest.Config, error) {
 	// TODO: when a breaking change is made, implement migration logic here.
 	return nil, nil
 }

@@ -1,5 +1,5 @@
 apiVersion: noisysockets.github.com/v1alpha1
-kind: WireGuardConfig
+kind: Config
 # These are just example values, you must replace them with your own!
 listenPort: 12345
 privateKey: 2FM36K8gizo0pdl/Ap4OBcF2E4RazQGvZqLmD4B4xUU=

@@ -44,7 +44,7 @@ type sourceSink struct {
 	defaultGateway  *transport.NoisePublicKey
 }
 
-func newSourceSink(localName string, publicKey transport.NoisePublicKey, localAddrs []netip.Addr, defaultGateway *transport.NoisePublicKey, defaultGatewayAddrs []netip.Addr) (*sourceSink, *noisyNet, error) {
+func newSourceSink(localName string, publicKey transport.NoisePublicKey, localAddrs []netip.Addr, defaultGateway *transport.NoisePublicKey, defaultGatewayAddrs []netip.Addr, dnsServers []netip.Addr) (*sourceSink, *noisyNet, error) {
 	ss := &sourceSink{
 		stack: stack.New(stack.Options{
 			NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
@@ -130,6 +130,7 @@ func newSourceSink(localName string, publicKey transport.NoisePublicKey, localAd
 		localAddrs:    localAddrs,
 		peerNames:     ss.peerNames,
 		peerAddresses: ss.peerAddresses,
+		dnsServers:    dnsServers,
 	}
 
 	return ss, n, nil
