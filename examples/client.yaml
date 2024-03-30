@@ -1,6 +1,6 @@
+# These are just example values, you must replace them with your own!
 apiVersion: noisysockets.github.com/v1alpha1
 kind: Config
-# These are just example values, you must replace them with your own!
 privateKey: SFN1gntnAutVFefwrPDlM1W2/LGWaRSn2hq06TvL2GY=
 ips:
 - 10.7.0.2

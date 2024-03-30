@@ -6,18 +6,20 @@
 package noisysockets
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/netip"
+	"time"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/miekg/dns"
 )
 
-func resolveHost(dnsServers []netip.Addr, host string, dialContext DialContextFn) ([]string, error) {
-	client := dns.Client{
-		Net:                 "tcp",
-		DialContextOverride: dialContext,
+func resolveHost(ctx context.Context, dnsServers []netip.Addr, host string, dialContext DialContextFn) ([]string, error) {
+	client := &dns.Client{
+		Net:     "tcp",
+		Timeout: 10 * time.Second,
 	}
 
 	var addrs []string
@@ -27,7 +29,7 @@ func resolveHost(dnsServers []netip.Addr, host string, dialContext DialContextFn
 		queries := []uint16{dns.TypeA, dns.TypeAAAA}
 
 		for _, qtype := range queries {
-			in, err := queryDNS(server, host, qtype, &client)
+			in, err := queryDNS(ctx, server, host, qtype, client, dialContext)
 			if err != nil {
 				queryResult = multierror.Append(queryResult, err)
 				continue
@@ -55,12 +57,25 @@ func resolveHost(dnsServers []netip.Addr, host string, dialContext DialContextFn
 	return nil, &net.DNSError{Err: "no such host", Name: host}
 }
 
-func queryDNS(server netip.Addr, host string, qtype uint16, client *dns.Client) (*dns.Msg, error) {
+func queryDNS(ctx context.Context, server netip.Addr, host string, qtype uint16, client *dns.Client, dialContext DialContextFn) (*dns.Msg, error) {
+	serverAddr := fmt.Sprintf("%s:53", server.String())
+
+	ctx, cancel := context.WithTimeout(ctx, client.Timeout)
+	defer cancel()
+
+	conn, err := dialContext(ctx, client.Net, serverAddr)
+	if err != nil {
+		return nil, &net.DNSError{
+			Err:  fmt.Errorf("could not connect to DNS server %s: %w", server, err).Error(),
+			Name: host,
+		}
+	}
+	defer conn.Close()
+
 	msg := new(dns.Msg)
 	msg.SetQuestion(dns.Fqdn(host), qtype)
 
-	serverAddr := fmt.Sprintf("%s:53", server.String())
-	r, _, err := client.Exchange(msg, serverAddr)
+	r, _, err := client.ExchangeWithConn(msg, &dns.Conn{Conn: conn})
 	if err != nil {
 		return nil, &net.DNSError{
 			Err:  fmt.Errorf("could not query DNS server %s: %w", serverAddr, err).Error(),

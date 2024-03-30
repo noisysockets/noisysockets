@@ -18,14 +18,6 @@ When you import Noisy Sockets Go Modules will attempt to use the gVisor master b
 go get -u gvisor.dev/gvisor@go
 ```
 
-### DNS dependency
-
-Until we have our changes merged upstream you will need to use our fork of the DNS library. This can be done by adding the following replace directive to your go.mod file.
-
-```
-replace github.com/miekg/dns => github.com/noisysockets/dns v0.0.0-20240327161832-ec2af2474779
-```
-
 ## Performance
 
 Surprisingly good, I've been able to saturate a 1Gbps link with approximately two CPU cores and a single noisy socket. Interestingly it appears to outperform the kernel implementation of WireGuard.

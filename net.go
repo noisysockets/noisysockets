@@ -45,7 +45,7 @@ type noisyNet struct {
 }
 
 // LookupHost resolves host names (encoded public keys) to IP addresses.
-func (n *noisyNet) LookupHost(host string) ([]string, error) {
+func (n *noisyNet) LookupHostContext(ctx context.Context, host string) ([]string, error) {
 	// Host is an IP address.
 	if addr, err := netip.ParseAddr(host); err == nil {
 		return []string{addr.String()}, nil
@@ -73,7 +73,7 @@ func (n *noisyNet) LookupHost(host string) ([]string, error) {
 	// Host is a DNS name.
 	if len(n.dnsServers) > 0 {
 		var err error
-		addrs, err = resolveHost(n.dnsServers, host, n.DialContext)
+		addrs, err = resolveHost(ctx, n.dnsServers, host, n.DialContext)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +112,7 @@ func (n *noisyNet) DialContext(ctx context.Context, network, address string) (ne
 		return nil, &net.OpError{Op: "dial", Err: errNumericPort}
 	}
 
-	allAddr, err := n.LookupHost(host)
+	allAddr, err := n.LookupHostContext(ctx, host)
 	if err != nil {
 		return nil, &net.OpError{Op: "dial", Err: err}
 	}
