@@ -40,15 +40,9 @@ import (
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/transport"
 	"gvisor.dev/gvisor/pkg/buffer"
-	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/link/channel"
-	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
-	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
-	"gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
-	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
-	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 )
 
 const (
@@ -60,124 +54,38 @@ var (
 )
 
 type sourceSink struct {
-	stack           *stack.Stack
-	ep              *channel.Endpoint
-	incoming        chan *stack.PacketBuffer
-	peerNames       map[string]transport.NoisePublicKey
-	peerAddresses   map[transport.NoisePublicKey][]netip.Addr
-	fromPeerAddress map[netip.Addr]transport.NoisePublicKey
-	publicKey       transport.NoisePublicKey
-	defaultGateway  *transport.NoisePublicKey
+	pd             *peerDirectory
+	stack          *stack.Stack
+	ep             *channel.Endpoint
+	notifyHandle   *channel.NotificationHandle
+	incoming       chan *stack.PacketBuffer
+	defaultGateway *transport.NoisePublicKey
 }
 
-func newSourceSink(localName string, publicKey transport.NoisePublicKey, localAddrs []netip.Addr, defaultGateway *transport.NoisePublicKey, defaultGatewayAddrs []netip.Addr, dnsServers []netip.Addr) (*sourceSink, *noisyNet, error) {
+func newSourceSink(pd *peerDirectory, s *stack.Stack, defaultGateway *transport.NoisePublicKey) (*sourceSink, error) {
 	ss := &sourceSink{
-		stack: stack.New(stack.Options{
-			NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
-			TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol, icmp.NewProtocol4, icmp.NewProtocol6},
-			HandleLocal:        true,
-		}),
-		ep:              channel.New(queueSize, uint32(transport.DefaultMTU), ""),
-		incoming:        make(chan *stack.PacketBuffer),
-		peerNames:       make(map[string]transport.NoisePublicKey),
-		peerAddresses:   make(map[transport.NoisePublicKey][]netip.Addr),
-		fromPeerAddress: make(map[netip.Addr]transport.NoisePublicKey),
-		publicKey:       publicKey,
-		defaultGateway:  defaultGateway,
+		pd:             pd,
+		stack:          s,
+		ep:             channel.New(queueSize, uint32(transport.DefaultMTU), ""),
+		incoming:       make(chan *stack.PacketBuffer),
+		defaultGateway: defaultGateway,
 	}
 
-	ss.ep.AddNotify(ss)
+	ss.notifyHandle = ss.ep.AddNotify(ss)
 
-	if err := ss.stack.CreateNIC(1, ss.ep); err != nil {
-		return nil, nil, fmt.Errorf("could not create NIC: %v", err)
+	if err := s.CreateNIC(1, ss.ep); err != nil {
+		return nil, fmt.Errorf("could not create NIC: %v", err)
 	}
 
-	var hasV4, hasV6 bool
-	for _, addr := range localAddrs {
-		var protoNumber tcpip.NetworkProtocolNumber
-		if addr.Is4() {
-			protoNumber = ipv4.ProtocolNumber
-		} else if addr.Is6() {
-			protoNumber = ipv6.ProtocolNumber
-		}
-
-		protoAddr := tcpip.ProtocolAddress{
-			Protocol:          protoNumber,
-			AddressWithPrefix: tcpip.AddrFromSlice(addr.AsSlice()).WithPrefix(),
-		}
-
-		if err := ss.stack.AddProtocolAddress(1, protoAddr, stack.AddressProperties{}); err != nil {
-			return nil, nil, fmt.Errorf("could not add protocol address: %v", err)
-		}
-		if addr.Is4() {
-			hasV4 = true
-		} else if addr.Is6() {
-			hasV6 = true
-		}
-	}
-	if hasV4 {
-		var gatewayV4 tcpip.Address
-		if defaultGateway != nil {
-			for _, addr := range defaultGatewayAddrs {
-				if addr.Is4() {
-					gatewayV4 = tcpip.AddrFromSlice(addr.AsSlice())
-					break
-				}
-			}
-		}
-
-		ss.stack.AddRoute(tcpip.Route{
-			Destination: header.IPv4EmptySubnet,
-			NIC:         1,
-			Gateway:     gatewayV4,
-		})
-	}
-	if hasV6 {
-		var gatewayV6 tcpip.Address
-		if defaultGateway != nil {
-			for _, addr := range defaultGatewayAddrs {
-				if addr.Is6() {
-					gatewayV6 = tcpip.AddrFromSlice(addr.AsSlice())
-					break
-				}
-			}
-		}
-
-		ss.stack.AddRoute(tcpip.Route{
-			Destination: header.IPv6EmptySubnet,
-			NIC:         1,
-			Gateway:     gatewayV6,
-		})
-	}
-
-	n := &noisyNet{
-		stack:         ss.stack,
-		localName:     localName,
-		localAddrs:    localAddrs,
-		peerNames:     ss.peerNames,
-		peerAddresses: ss.peerAddresses,
-		dnsServers:    dnsServers,
-	}
-
-	return ss, n, nil
-}
-
-func (ss *sourceSink) AddPeer(name string, publicKey transport.NoisePublicKey, addrs []netip.Addr) {
-	if name != "" {
-		ss.peerNames[name] = publicKey
-	}
-
-	for _, addr := range addrs {
-		ss.peerAddresses[publicKey] = append(ss.peerAddresses[publicKey], addr)
-		ss.fromPeerAddress[addr] = publicKey
-	}
+	return ss, nil
 }
 
 func (ss *sourceSink) Close() error {
-	ss.stack.RemoveNIC(1)
-	ss.stack.Close()
+	ss.ep.RemoveNotify(ss.notifyHandle)
 	ss.ep.Close()
 	close(ss.incoming)
+
+	ss.stack.RemoveNIC(1)
 
 	return nil
 }
@@ -208,7 +116,7 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []transport.
 		}
 
 		var ok bool
-		destinations[idx], ok = ss.fromPeerAddress[peerAddr]
+		destinations[idx], ok = ss.pd.LookupPeerByAddress(peerAddr)
 		if !ok {
 			if ss.defaultGateway == nil {
 				return fmt.Errorf("unknown destination address")

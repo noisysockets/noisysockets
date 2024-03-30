@@ -35,7 +35,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func TestNoisySocket(t *testing.T) {
+func TestNoisyNetwork(t *testing.T) {
 	logger := slogt.New(t)
 
 	serverPrivateKey, err := transport.NewPrivateKey()
@@ -61,11 +61,11 @@ func TestNoisySocket(t *testing.T) {
 			},
 		}
 
-		socket, err := noisysockets.NewNoisySocket(logger, &conf)
+		net, err := noisysockets.NewNoisyNetwork(logger, &conf)
 		if err != nil {
 			return err
 		}
-		defer socket.Close()
+		defer net.Close()
 
 		var mux http.ServeMux
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +78,7 @@ func TestNoisySocket(t *testing.T) {
 		defer srv.Close()
 
 		go func() {
-			lis, err := socket.Listen("tcp", ":80")
+			lis, err := net.Listen("tcp", ":80")
 			if err != nil {
 				logger.Error("Failed to listen", "error", err)
 				return
@@ -114,15 +114,15 @@ func TestNoisySocket(t *testing.T) {
 			},
 		}
 
-		socket, err := noisysockets.NewNoisySocket(logger, &conf)
+		net, err := noisysockets.NewNoisyNetwork(logger, &conf)
 		if err != nil {
 			return err
 		}
-		defer socket.Close()
+		defer net.Close()
 
 		client := &http.Client{
 			Transport: &http.Transport{
-				Dial: socket.Dial,
+				Dial: net.Dial,
 			},
 		}
 
@@ -157,22 +157,22 @@ func TestNoisySocket(t *testing.T) {
 	time.Sleep(time.Second)
 }
 
-func TestNoisySocket_GatewayAndDNS(t *testing.T) {
+func TestNoisyNetwork_GatewayAndDNS(t *testing.T) {
 	pwd, err := os.Getwd()
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	net, err := network.New(ctx, network.WithCheckDuplicate())
+	testNet, err := network.New(ctx, network.WithCheckDuplicate())
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		require.NoError(t, net.Remove(ctx))
+		require.NoError(t, testNet.Remove(ctx))
 	})
 
 	// Spin up a dnsmasq that forwards DNS queries to the host.
 	dnsmasqReq := testcontainers.ContainerRequest{
 		Image:        "andyshinn/dnsmasq:2.83",
 		ExposedPorts: []string{"53/tcp", "53/udp"},
-		Networks:     []string{net.Name},
+		Networks:     []string{testNet.Name},
 		WaitingFor:   wait.ForListeningPort("53/tcp"),
 	}
 
@@ -189,9 +189,9 @@ func TestNoisySocket_GatewayAndDNS(t *testing.T) {
 	nginxReq := testcontainers.ContainerRequest{
 		Image:        "nginx:latest",
 		ExposedPorts: []string{"80/tcp"},
-		Networks:     []string{net.Name},
+		Networks:     []string{testNet.Name},
 		NetworkAliases: map[string][]string{
-			net.Name: {"web"},
+			testNet.Name: {"web"},
 		},
 		WaitingFor: wait.ForListeningPort("80/tcp"),
 	}
@@ -212,7 +212,7 @@ func TestNoisySocket_GatewayAndDNS(t *testing.T) {
 		Files: []testcontainers.ContainerFile{
 			{HostFilePath: filepath.Join(pwd, "testdata/wg0.conf"), ContainerFilePath: "/etc/wireguard/wg0.conf", FileMode: 0o400},
 		},
-		Networks: []string{net.Name},
+		Networks: []string{testNet.Name},
 		HostConfigModifier: func(hostConfig *container.HostConfig) {
 			hostConfig.CapAdd = []string{"NET_ADMIN"}
 
@@ -244,15 +244,15 @@ func TestNoisySocket_GatewayAndDNS(t *testing.T) {
 	conf, err := config.FromYAML(configPath)
 	require.NoError(t, err)
 
-	socket, err := noisysockets.NewNoisySocket(logger, conf)
+	net, err := noisysockets.NewNoisyNetwork(logger, conf)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		require.NoError(t, socket.Close())
+		require.NoError(t, net.Close())
 	})
 
 	httpClient := &http.Client{
 		Transport: &http.Transport{
-			Dial: socket.Dial,
+			Dial: net.Dial,
 		},
 	}
 

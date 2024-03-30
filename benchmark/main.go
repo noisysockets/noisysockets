@@ -81,11 +81,11 @@ func main() {
 						return fmt.Errorf("failed to read config: %w", err)
 					}
 
-					socket, err := noisysockets.NewNoisySocket(logger, conf)
+					net, err := noisysockets.NewNoisyNetwork(logger, conf)
 					if err != nil {
 						return fmt.Errorf("failed to create noisy socket: %w", err)
 					}
-					defer socket.Close()
+					defer net.Close()
 
 					randBuf := make([]byte, maxMessageSize)
 					if _, err := rand.Read(randBuf); err != nil {
@@ -112,7 +112,7 @@ func main() {
 					}
 
 					go func() {
-						lis, err := socket.Listen("tcp", ":80")
+						lis, err := net.Listen("tcp", ":80")
 						if err != nil {
 							logger.Error("Failed to listen", "error", err)
 							return
@@ -140,7 +140,7 @@ func main() {
 						logger.Error("Failed to close server", "error", err)
 					}
 
-					if err := socket.Close(); err != nil {
+					if err := net.Close(); err != nil {
 						logger.Error("Failed to close", "error", err)
 					}
 
@@ -165,14 +165,14 @@ func main() {
 						return fmt.Errorf("failed to read config: %w", err)
 					}
 
-					socket, err := noisysockets.NewNoisySocket(logger, conf)
+					net, err := noisysockets.NewNoisyNetwork(logger, conf)
 					if err != nil {
 						return fmt.Errorf("failed to create noisy socket: %w", err)
 					}
-					defer socket.Close()
+					defer net.Close()
 
 					transport := http.DefaultTransport.(*http.Transport).Clone()
-					transport.DialContext = socket.DialContext
+					transport.DialContext = net.DialContext
 
 					client := &http.Client{
 						Timeout:   30 * time.Second,

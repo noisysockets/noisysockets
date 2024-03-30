@@ -32,20 +32,29 @@
 package noisysockets
 
 import (
-	"context"
-	"errors"
+	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
-	"regexp"
 	"strconv"
+
+	"context"
+	"errors"
+	"regexp"
 	"time"
 
+	"github.com/noisysockets/noisysockets/config/v1alpha1"
+	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/transport"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
+	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 )
 
 type DialContextFn func(ctx context.Context, network, address string) (net.Conn, error)
@@ -58,35 +67,232 @@ var (
 	errMissingAddress    = errors.New("missing address")
 )
 
-type noisyNet struct {
-	stack         *stack.Stack
-	localName     string
-	localAddrs    []netip.Addr
-	peerNames     map[string]transport.NoisePublicKey
-	peerAddresses map[transport.NoisePublicKey][]netip.Addr
-	dnsServers    []netip.Addr
+// NoisyNetworkwork is a userspace WireGuard peer that exposes
+// Dial() and Listen() methods compatible with the net package.
+type NoisyNetwork struct {
+	transport  *transport.Transport
+	pd         *peerDirectory
+	stack      *stack.Stack
+	localAddrs []netip.Addr
+	dnsServers []netip.Addr
+}
+
+func NewNoisyNetwork(logger *slog.Logger, conf *v1alpha1.Config) (*NoisyNetwork, error) {
+	var privateKey transport.NoisePrivateKey
+	if err := privateKey.FromString(conf.PrivateKey); err != nil {
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	var localAddrs []netip.Addr
+	for _, ip := range conf.IPs {
+		addr, err := netip.ParseAddr(ip)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse address: %w", err)
+		}
+		localAddrs = append(localAddrs, addr)
+	}
+
+	pd := newPeerDirectory()
+
+	// Add the local node to the peer directory.
+	pd.AddPeer(conf.Name, privateKey.PublicKey(), localAddrs)
+
+	var defaultGateway *transport.NoisePublicKey
+	var defaultGatewayAddrs []netip.Addr
+	if conf.DefaultGatewayPeerName != "" {
+		var defaultGatewayPeerConf *v1alpha1.WireGuardPeerConfig
+		for i := range conf.Peers {
+			if conf.Peers[i].Name == conf.DefaultGatewayPeerName {
+				defaultGatewayPeerConf = &conf.Peers[i]
+				break
+			}
+		}
+
+		if defaultGatewayPeerConf == nil {
+			return nil, fmt.Errorf("could not find default gateway peer %q", conf.DefaultGatewayPeerName)
+		}
+
+		defaultGateway = &transport.NoisePublicKey{}
+		if err := defaultGateway.FromString(defaultGatewayPeerConf.PublicKey); err != nil {
+			return nil, fmt.Errorf("could not parse default gateway public key: %w", err)
+		}
+
+		for _, ip := range defaultGatewayPeerConf.IPs {
+			addr, err := netip.ParseAddr(ip)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse default gateway address: %w", err)
+			}
+
+			defaultGatewayAddrs = append(defaultGatewayAddrs, addr)
+		}
+	}
+
+	var dnsServers []netip.Addr
+	for _, ip := range conf.DNSServers {
+		addr, err := netip.ParseAddr(ip)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse DNS server address: %w", err)
+		}
+
+		dnsServers = append(dnsServers, addr)
+	}
+
+	s := stack.New(stack.Options{
+		NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
+		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol, icmp.NewProtocol4, icmp.NewProtocol6},
+		HandleLocal:        true,
+	})
+
+	sourceSink, err := newSourceSink(pd, s, defaultGateway)
+	if err != nil {
+		return nil, fmt.Errorf("could not create source sink: %w", err)
+	}
+
+	var hasV4, hasV6 bool
+	for _, addr := range localAddrs {
+		var protoNumber tcpip.NetworkProtocolNumber
+		if addr.Is4() {
+			protoNumber = ipv4.ProtocolNumber
+		} else if addr.Is6() {
+			protoNumber = ipv6.ProtocolNumber
+		}
+
+		protoAddr := tcpip.ProtocolAddress{
+			Protocol:          protoNumber,
+			AddressWithPrefix: tcpip.AddrFromSlice(addr.AsSlice()).WithPrefix(),
+		}
+
+		if err := s.AddProtocolAddress(1, protoAddr, stack.AddressProperties{}); err != nil {
+			return nil, fmt.Errorf("could not add protocol address: %v", err)
+		}
+		if addr.Is4() {
+			hasV4 = true
+		} else if addr.Is6() {
+			hasV6 = true
+		}
+	}
+	if hasV4 {
+		var gatewayV4 tcpip.Address
+		if defaultGateway != nil {
+			for _, addr := range defaultGatewayAddrs {
+				if addr.Is4() {
+					gatewayV4 = tcpip.AddrFromSlice(addr.AsSlice())
+					break
+				}
+			}
+		}
+
+		s.AddRoute(tcpip.Route{
+			Destination: header.IPv4EmptySubnet,
+			NIC:         1,
+			Gateway:     gatewayV4,
+		})
+	}
+	if hasV6 {
+		var gatewayV6 tcpip.Address
+		if defaultGateway != nil {
+			for _, addr := range defaultGatewayAddrs {
+				if addr.Is6() {
+					gatewayV6 = tcpip.AddrFromSlice(addr.AsSlice())
+					break
+				}
+			}
+		}
+
+		s.AddRoute(tcpip.Route{
+			Destination: header.IPv6EmptySubnet,
+			NIC:         1,
+			Gateway:     gatewayV6,
+		})
+	}
+
+	t := transport.NewTransport(sourceSink, conn.NewStdNetBind(), logger)
+
+	t.SetPrivateKey(privateKey)
+
+	if err := t.UpdatePort(conf.ListenPort); err != nil {
+		return nil, fmt.Errorf("failed to update port: %w", err)
+	}
+
+	for _, peerConf := range conf.Peers {
+		var peerPublicKey transport.NoisePublicKey
+		if err := peerPublicKey.FromString(peerConf.PublicKey); err != nil {
+			return nil, fmt.Errorf("failed to parse peer public key: %w", err)
+		}
+
+		var peerAddrs []netip.Addr
+		for _, ip := range peerConf.IPs {
+			addr, err := netip.ParseAddr(ip)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse peer address %q: %v", ip, err)
+			}
+			peerAddrs = append(peerAddrs, addr)
+		}
+
+		pd.AddPeer(peerConf.Name, peerPublicKey, peerAddrs)
+
+		peer, err := t.NewPeer(peerPublicKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create peer: %w", err)
+		}
+
+		if peerConf.Endpoint != "" {
+			peerEndpointHost, peerEndpointPortStr, err := net.SplitHostPort(peerConf.Endpoint)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse peer endpoint: %w", err)
+			}
+
+			peerEndpointAddrs, err := net.LookupHost(peerEndpointHost)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve peer address: %w", err)
+			}
+
+			peerEndpointAddr, err := netip.ParseAddr(peerEndpointAddrs[0])
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse peer address: %w", err)
+			}
+
+			peerEndpointPort, err := strconv.Atoi(peerEndpointPortStr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse peer port: %w", err)
+			}
+
+			peer.SetEndpointFromPacket(&conn.StdNetEndpoint{
+				AddrPort: netip.AddrPortFrom(peerEndpointAddr, uint16(peerEndpointPort)),
+			})
+		}
+	}
+
+	if err := t.Up(); err != nil {
+		return nil, fmt.Errorf("failed to bring transport up: %w", err)
+	}
+
+	return &NoisyNetwork{
+		transport:  t,
+		pd:         pd,
+		stack:      s,
+		localAddrs: localAddrs,
+		dnsServers: dnsServers,
+	}, nil
+}
+
+// Close closes the network and releases any resources associated with it.
+func (n *NoisyNetwork) Close() error {
+	n.stack.Close()
+	return n.transport.Close()
 }
 
 // LookupHost resolves host names (encoded public keys) to IP addresses.
-func (n *noisyNet) LookupHostContext(ctx context.Context, host string) ([]string, error) {
+func (n *NoisyNetwork) LookupHostContext(ctx context.Context, host string) ([]string, error) {
 	// Host is an IP address.
 	if addr, err := netip.ParseAddr(host); err == nil {
 		return []string{addr.String()}, nil
 	}
 
-	// Host is the name of the local node.
-	if host == n.localName {
-		var addrs []string
-		for _, addr := range n.localAddrs {
-			addrs = append(addrs, addr.String())
-		}
-		return addrs, nil
-	}
-
 	// Host is the name of a peer.
 	var addrs []string
-	if pk, ok := n.peerNames[host]; ok {
-		for _, addr := range n.peerAddresses[pk] {
+	if peerAddresses, ok := n.pd.LookupPeerAddressesByName(host); ok {
+		for _, addr := range peerAddresses {
 			addrs = append(addrs, addr.String())
 		}
 
@@ -110,14 +316,14 @@ func (n *noisyNet) LookupHostContext(ctx context.Context, host string) ([]string
 }
 
 // Dial creates a network connection.
-func (n *noisyNet) Dial(network, address string) (net.Conn, error) {
+func (n *NoisyNetwork) Dial(network, address string) (net.Conn, error) {
 	return n.DialContext(context.Background(), network, address)
 }
 
 var protoSplitter = regexp.MustCompile(`^(tcp|udp)(4|6)?$`)
 
 // DialContext creates a network connection with a context.
-func (n *noisyNet) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+func (n *NoisyNetwork) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	acceptV4, acceptV6 := true, true
 	matches := protoSplitter.FindStringSubmatch(network)
 	if matches == nil {
@@ -207,7 +413,7 @@ func (n *noisyNet) DialContext(ctx context.Context, network, address string) (ne
 }
 
 // Listen creates a network listener.
-func (n *noisyNet) Listen(network, address string) (net.Listener, error) {
+func (n *NoisyNetwork) Listen(network, address string) (net.Listener, error) {
 	acceptV4, acceptV6 := true, true
 	matches := protoSplitter.FindStringSubmatch(network)
 	if matches == nil {
@@ -265,7 +471,7 @@ func (n *noisyNet) Listen(network, address string) (net.Listener, error) {
 }
 
 // ListenPacket creates a network packet listener.
-func (n *noisyNet) ListenPacket(network, address string) (net.PacketConn, error) {
+func (n *NoisyNetwork) ListenPacket(network, address string) (net.PacketConn, error) {
 	acceptV4, acceptV6 := true, true
 	matches := protoSplitter.FindStringSubmatch(network)
 	if matches == nil {

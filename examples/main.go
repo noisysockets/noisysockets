@@ -66,11 +66,11 @@ func main() {
 						return fmt.Errorf("failed to read config: %w", err)
 					}
 
-					socket, err := noisysockets.NewNoisySocket(logger, conf)
+					net, err := noisysockets.NewNoisyNetwork(logger, conf)
 					if err != nil {
 						return fmt.Errorf("failed to create noisy socket: %w", err)
 					}
-					defer socket.Close()
+					defer net.Close()
 
 					var mux http.ServeMux
 					mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +82,7 @@ func main() {
 					}
 
 					go func() {
-						lis, err := socket.Listen("tcp", ":80")
+						lis, err := net.Listen("tcp", ":80")
 						if err != nil {
 							logger.Error("Failed to listen", "error", err)
 							return
@@ -110,7 +110,7 @@ func main() {
 						logger.Error("Failed to close server", "error", err)
 					}
 
-					if err := socket.Close(); err != nil {
+					if err := net.Close(); err != nil {
 						logger.Error("Failed to close", "error", err)
 					}
 
@@ -135,15 +135,15 @@ func main() {
 						return fmt.Errorf("failed to read config: %w", err)
 					}
 
-					socket, err := noisysockets.NewNoisySocket(logger, conf)
+					net, err := noisysockets.NewNoisyNetwork(logger, conf)
 					if err != nil {
 						return fmt.Errorf("failed to create noisy socket: %w", err)
 					}
-					defer socket.Close()
+					defer net.Close()
 
 					client := &http.Client{
 						Transport: &http.Transport{
-							Dial: socket.Dial,
+							Dial: net.Dial,
 						},
 					}
 
