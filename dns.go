@@ -22,7 +22,7 @@ import (
 
 func resolveHost(ctx context.Context, dnsServers []netip.Addr, host string, dialContext DialContextFn) ([]string, error) {
 	client := &dns.Client{
-		Net:     "tcp",
+		Net:     "udp",
 		Timeout: 10 * time.Second,
 	}
 

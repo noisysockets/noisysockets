@@ -58,8 +58,6 @@ var (
 	errMissingAddress    = errors.New("missing address")
 )
 
-var protoSplitter = regexp.MustCompile(`^(tcp)(4|6)?$`)
-
 type noisyNet struct {
 	stack         *stack.Stack
 	localName     string
@@ -115,6 +113,8 @@ func (n *noisyNet) LookupHostContext(ctx context.Context, host string) ([]string
 func (n *noisyNet) Dial(network, address string) (net.Conn, error) {
 	return n.DialContext(context.Background(), network, address)
 }
+
+var protoSplitter = regexp.MustCompile(`^(tcp|udp)(4|6)?$`)
 
 // DialContext creates a network connection with a context.
 func (n *noisyNet) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
@@ -184,7 +184,14 @@ func (n *noisyNet) DialContext(ctx context.Context, network, address string) (ne
 		}
 
 		fa, pn := convertToFullAddr(addr)
-		c, err := gonet.DialContextTCP(dialCtx, n.stack, fa, pn)
+
+		var c net.Conn
+		switch matches[1] {
+		case "tcp":
+			c, err = gonet.DialContextTCP(dialCtx, n.stack, fa, pn)
+		case "udp":
+			c, err = gonet.DialUDP(n.stack, nil, &fa, pn)
+		}
 		if err == nil {
 			return c, nil
 		}
@@ -208,6 +215,10 @@ func (n *noisyNet) Listen(network, address string) (net.Listener, error) {
 	} else if len(matches[2]) != 0 {
 		acceptV4 = matches[2][0] == '4'
 		acceptV6 = !acceptV4
+	}
+
+	if matches[1] != "tcp" {
+		return nil, &net.OpError{Op: "listen", Err: net.UnknownNetworkError(network)}
 	}
 
 	host, sport, err := net.SplitHostPort(address)
@@ -251,6 +262,64 @@ func (n *noisyNet) Listen(network, address string) (net.Listener, error) {
 
 	fa, pn := convertToFullAddr(addr)
 	return gonet.ListenTCP(n.stack, fa, pn)
+}
+
+// ListenPacket creates a network packet listener.
+func (n *noisyNet) ListenPacket(network, address string) (net.PacketConn, error) {
+	acceptV4, acceptV6 := true, true
+	matches := protoSplitter.FindStringSubmatch(network)
+	if matches == nil {
+		return nil, &net.OpError{Op: "listen", Err: net.UnknownNetworkError(network)}
+	} else if len(matches[2]) != 0 {
+		acceptV4 = matches[2][0] == '4'
+		acceptV6 = !acceptV4
+	}
+
+	if matches[1] != "udp" {
+		return nil, &net.OpError{Op: "listen", Err: net.UnknownNetworkError(network)}
+	}
+
+	host, sport, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, &net.OpError{Op: "listen", Err: err}
+	}
+
+	port, err := strconv.Atoi(sport)
+	if err != nil || port < 0 || port > 65535 {
+		return nil, &net.OpError{Op: "listen", Err: errNumericPort}
+	}
+
+	var addr netip.AddrPort
+	if host != "" {
+		ip, err := netip.ParseAddr(host)
+		if err != nil {
+			return nil, &net.OpError{Op: "listen", Err: err}
+		}
+
+		if ip.Is4() && !acceptV4 {
+			return nil, &net.OpError{Op: "listen", Err: net.UnknownNetworkError("udp4")}
+		}
+
+		if ip.Is6() && !acceptV6 {
+			return nil, &net.OpError{Op: "listen", Err: net.UnknownNetworkError("udp6")}
+		}
+
+		addr = netip.AddrPortFrom(ip, uint16(port))
+	} else {
+		for _, localAddr := range n.localAddrs {
+			if localAddr.Is6() && acceptV6 {
+				addr = netip.AddrPortFrom(localAddr, uint16(port))
+				break
+			}
+			if localAddr.Is4() && acceptV4 {
+				addr = netip.AddrPortFrom(localAddr, uint16(port))
+				break
+			}
+		}
+	}
+
+	fa, pn := convertToFullAddr(addr)
+	return gonet.DialUDP(n.stack, &fa, nil, pn)
 }
 
 func convertToFullAddr(endpoint netip.AddrPort) (tcpip.FullAddress, tcpip.NetworkProtocolNumber) {
