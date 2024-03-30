@@ -401,7 +401,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 			peer.timersAnyAuthenticatedPacketReceived()
 
 			// update endpoint
-			peer.SetEndpointFromPacket(elem.endpoint)
+			peer.SetEndpoint(elem.endpoint)
 
 			transport.log.Debug("Received handshake initiation", "peer", peer)
 			peer.rxBytes.Add(uint64(len(elem.packet)))
@@ -432,7 +432,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 			}
 
 			// update endpoint
-			peer.SetEndpointFromPacket(elem.endpoint)
+			peer.SetEndpoint(elem.endpoint)
 
 			transport.log.Debug("Received handshake response", "peer", peer)
 			peer.rxBytes.Add(uint64(len(elem.packet)))
@@ -495,7 +495,7 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 
 			validTailPacket = i
 			if peer.ReceivedWithKeypair(elem.keypair) {
-				peer.SetEndpointFromPacket(elem.endpoint)
+				peer.SetEndpoint(elem.endpoint)
 				peer.timersHandshakeComplete()
 				if err := peer.SendStagedPackets(); err != nil {
 					t.log.Warn("Failed to send staged packets", "peer", peer, "error", err)
@@ -515,7 +515,7 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 
 		peer.rxBytes.Add(rxBytesLen)
 		if validTailPacket >= 0 {
-			peer.SetEndpointFromPacket(elemsContainer.elems[validTailPacket].endpoint)
+			peer.SetEndpoint(elemsContainer.elems[validTailPacket].endpoint)
 			if err := peer.keepKeyFreshReceiving(); err != nil {
 				t.log.Warn("Failed to keep key fresh", "peer", peer, "error", err)
 				continue

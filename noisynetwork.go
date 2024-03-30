@@ -257,7 +257,7 @@ func NewNoisyNetwork(logger *slog.Logger, conf *v1alpha1.Config) (*NoisyNetwork,
 				return nil, fmt.Errorf("failed to parse peer port: %w", err)
 			}
 
-			peer.SetEndpointFromPacket(&conn.StdNetEndpoint{
+			peer.SetEndpoint(&conn.StdNetEndpoint{
 				AddrPort: netip.AddrPortFrom(peerEndpointAddr, uint16(peerEndpointPort)),
 			})
 		}
@@ -526,6 +526,21 @@ func (n *NoisyNetwork) ListenPacket(network, address string) (net.PacketConn, er
 
 	fa, pn := convertToFullAddr(addr)
 	return gonet.DialUDP(n.stack, &fa, nil, pn)
+}
+
+// GetPeerEndpoint returns the public address of a peer (if known).
+func (n *NoisyNetwork) GetPeerEndpoint(publicKey transport.NoisePublicKey) (netip.AddrPort, error) {
+	peer := n.transport.LookupPeer(publicKey)
+	if peer == nil {
+		return netip.AddrPort{}, fmt.Errorf("unknown peer")
+	}
+
+	endpoint := peer.GetEndpoint()
+	if endpoint == nil {
+		return netip.AddrPort{}, fmt.Errorf("no known endpoint for peer")
+	}
+
+	return netip.ParseAddrPort(endpoint.DstToString())
 }
 
 func convertToFullAddr(endpoint netip.AddrPort) (tcpip.FullAddress, tcpip.NetworkProtocolNumber) {

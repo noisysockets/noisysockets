@@ -276,7 +276,13 @@ func (peer *Peer) Stop() {
 	peer.ZeroAndFlushAll()
 }
 
-func (peer *Peer) SetEndpointFromPacket(endpoint conn.Endpoint) {
+func (peer *Peer) GetEndpoint() conn.Endpoint {
+	peer.endpoint.Lock()
+	defer peer.endpoint.Unlock()
+	return peer.endpoint.val
+}
+
+func (peer *Peer) SetEndpoint(endpoint conn.Endpoint) {
 	peer.endpoint.Lock()
 	defer peer.endpoint.Unlock()
 	peer.endpoint.val = endpoint
