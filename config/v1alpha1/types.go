@@ -1,6 +1,10 @@
-/* SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MPL-2.0
+/*
+ * Copyright (C) 2024 Damian Peckett <damian@pecke.tt>.
  *
- * Copyright (c) 2024 Damian Peckett <damian@pecke.tt>.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
 package v1alpha1
@@ -20,6 +24,7 @@ type Config struct {
 	// Name is the hostname of this socket.
 	Name string `yaml:"name" mapstructure:"name"`
 	// ListenPort is an optional port on which to listen for incoming packets.
+	// If not specified, one will be chosen randomly.
 	ListenPort uint16 `yaml:"listenPort" mapstructure:"listenPort"`
 	// PrivateKey is the private key for this socket.
 	PrivateKey string `yaml:"privateKey" mapstructure:"privateKey"`
