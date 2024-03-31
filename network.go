@@ -67,9 +67,9 @@ var (
 	errMissingAddress    = errors.New("missing address")
 )
 
-// NoisyNetworkwork is a userspace WireGuard peer that exposes
+// Network is a userspace WireGuard peer that exposes
 // Dial() and Listen() methods compatible with the net package.
-type NoisyNetwork struct {
+type Network struct {
 	transport  *transport.Transport
 	pd         *peerDirectory
 	stack      *stack.Stack
@@ -77,7 +77,7 @@ type NoisyNetwork struct {
 	dnsServers []netip.Addr
 }
 
-func NewNoisyNetwork(logger *slog.Logger, conf *v1alpha1.Config) (*NoisyNetwork, error) {
+func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (*Network, error) {
 	var privateKey transport.NoisePrivateKey
 	if err := privateKey.FromString(conf.PrivateKey); err != nil {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
@@ -99,31 +99,23 @@ func NewNoisyNetwork(logger *slog.Logger, conf *v1alpha1.Config) (*NoisyNetwork,
 
 	var defaultGateway *transport.NoisePublicKey
 	var defaultGatewayAddrs []netip.Addr
-	if conf.DefaultGatewayPeerName != "" {
-		var defaultGatewayPeerConf *v1alpha1.WireGuardPeerConfig
-		for i := range conf.Peers {
-			if conf.Peers[i].Name == conf.DefaultGatewayPeerName {
-				defaultGatewayPeerConf = &conf.Peers[i]
-				break
-			}
-		}
-
-		if defaultGatewayPeerConf == nil {
-			return nil, fmt.Errorf("could not find default gateway peer %q", conf.DefaultGatewayPeerName)
-		}
-
-		defaultGateway = &transport.NoisePublicKey{}
-		if err := defaultGateway.FromString(defaultGatewayPeerConf.PublicKey); err != nil {
-			return nil, fmt.Errorf("could not parse default gateway public key: %w", err)
-		}
-
-		for _, ip := range defaultGatewayPeerConf.IPs {
-			addr, err := netip.ParseAddr(ip)
-			if err != nil {
-				return nil, fmt.Errorf("could not parse default gateway address: %w", err)
+	for _, peerConf := range conf.Peers {
+		if peerConf.DefaultGateway {
+			defaultGateway = &transport.NoisePublicKey{}
+			if err := defaultGateway.FromString(peerConf.PublicKey); err != nil {
+				return nil, fmt.Errorf("could not parse default gateway public key: %w", err)
 			}
 
-			defaultGatewayAddrs = append(defaultGatewayAddrs, addr)
+			for _, ip := range peerConf.IPs {
+				addr, err := netip.ParseAddr(ip)
+				if err != nil {
+					return nil, fmt.Errorf("could not parse default gateway address: %w", err)
+				}
+
+				defaultGatewayAddrs = append(defaultGatewayAddrs, addr)
+			}
+
+			break
 		}
 	}
 
@@ -143,7 +135,7 @@ func NewNoisyNetwork(logger *slog.Logger, conf *v1alpha1.Config) (*NoisyNetwork,
 		HandleLocal:        true,
 	})
 
-	sourceSink, err := newSourceSink(pd, s, defaultGateway)
+	sourceSink, err := newSourceSink(logger, pd, s, defaultGateway)
 	if err != nil {
 		return nil, fmt.Errorf("could not create source sink: %w", err)
 	}
@@ -267,7 +259,7 @@ func NewNoisyNetwork(logger *slog.Logger, conf *v1alpha1.Config) (*NoisyNetwork,
 		return nil, fmt.Errorf("failed to bring transport up: %w", err)
 	}
 
-	return &NoisyNetwork{
+	return &Network{
 		transport:  t,
 		pd:         pd,
 		stack:      s,
@@ -277,13 +269,13 @@ func NewNoisyNetwork(logger *slog.Logger, conf *v1alpha1.Config) (*NoisyNetwork,
 }
 
 // Close closes the network and releases any resources associated with it.
-func (n *NoisyNetwork) Close() error {
+func (n *Network) Close() error {
 	n.stack.Close()
 	return n.transport.Close()
 }
 
 // LookupHost resolves host names (encoded public keys) to IP addresses.
-func (n *NoisyNetwork) LookupHostContext(ctx context.Context, host string) ([]string, error) {
+func (n *Network) LookupHostContext(ctx context.Context, host string) ([]string, error) {
 	// Host is an IP address.
 	if addr, err := netip.ParseAddr(host); err == nil {
 		return []string{addr.String()}, nil
@@ -316,14 +308,14 @@ func (n *NoisyNetwork) LookupHostContext(ctx context.Context, host string) ([]st
 }
 
 // Dial creates a network connection.
-func (n *NoisyNetwork) Dial(network, address string) (net.Conn, error) {
+func (n *Network) Dial(network, address string) (net.Conn, error) {
 	return n.DialContext(context.Background(), network, address)
 }
 
 var protoSplitter = regexp.MustCompile(`^(tcp|udp)(4|6)?$`)
 
 // DialContext creates a network connection with a context.
-func (n *NoisyNetwork) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+func (n *Network) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	acceptV4, acceptV6 := true, true
 	matches := protoSplitter.FindStringSubmatch(network)
 	if matches == nil {
@@ -413,7 +405,7 @@ func (n *NoisyNetwork) DialContext(ctx context.Context, network, address string)
 }
 
 // Listen creates a network listener.
-func (n *NoisyNetwork) Listen(network, address string) (net.Listener, error) {
+func (n *Network) Listen(network, address string) (net.Listener, error) {
 	acceptV4, acceptV6 := true, true
 	matches := protoSplitter.FindStringSubmatch(network)
 	if matches == nil {
@@ -471,7 +463,7 @@ func (n *NoisyNetwork) Listen(network, address string) (net.Listener, error) {
 }
 
 // ListenPacket creates a network packet listener.
-func (n *NoisyNetwork) ListenPacket(network, address string) (net.PacketConn, error) {
+func (n *Network) ListenPacket(network, address string) (net.PacketConn, error) {
 	acceptV4, acceptV6 := true, true
 	matches := protoSplitter.FindStringSubmatch(network)
 	if matches == nil {
@@ -529,7 +521,7 @@ func (n *NoisyNetwork) ListenPacket(network, address string) (net.PacketConn, er
 }
 
 // GetPeerEndpoint returns the public address of a peer (if known).
-func (n *NoisyNetwork) GetPeerEndpoint(publicKey transport.NoisePublicKey) (netip.AddrPort, error) {
+func (n *Network) GetPeerEndpoint(publicKey transport.NoisePublicKey) (netip.AddrPort, error) {
 	peer := n.transport.LookupPeer(publicKey)
 	if peer == nil {
 		return netip.AddrPort{}, fmt.Errorf("unknown peer")

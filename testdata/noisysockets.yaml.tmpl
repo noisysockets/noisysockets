@@ -3,7 +3,6 @@ kind: Config
 privateKey: SFN1gntnAutVFefwrPDlM1W2/LGWaRSn2hq06TvL2GY=
 ips:
 - 10.7.0.2
-defaultGatewayPeerName: gateway
 dnsServers:
 - {{ .DNSServer }}
 peers:
@@ -12,3 +11,4 @@ peers:
   endpoint: {{ .Endpoint }}
   ips:
   - 10.7.0.1
+  defaultGateway: true

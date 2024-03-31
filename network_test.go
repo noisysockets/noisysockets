@@ -35,7 +35,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func TestNoisyNetwork(t *testing.T) {
+func TestNetwork(t *testing.T) {
 	logger := slogt.New(t)
 
 	serverPrivateKey, err := transport.NewPrivateKey()
@@ -61,7 +61,7 @@ func TestNoisyNetwork(t *testing.T) {
 			},
 		}
 
-		net, err := noisysockets.NewNoisyNetwork(logger, &conf)
+		net, err := noisysockets.NewNetwork(logger, &conf)
 		if err != nil {
 			return err
 		}
@@ -114,7 +114,7 @@ func TestNoisyNetwork(t *testing.T) {
 			},
 		}
 
-		net, err := noisysockets.NewNoisyNetwork(logger, &conf)
+		net, err := noisysockets.NewNetwork(logger, &conf)
 		if err != nil {
 			return err
 		}
@@ -157,7 +157,7 @@ func TestNoisyNetwork(t *testing.T) {
 	time.Sleep(time.Second)
 }
 
-func TestNoisyNetwork_GatewayAndDNS(t *testing.T) {
+func TestNetwork_GatewayAndDNS(t *testing.T) {
 	pwd, err := os.Getwd()
 	require.NoError(t, err)
 
@@ -244,7 +244,7 @@ func TestNoisyNetwork_GatewayAndDNS(t *testing.T) {
 	conf, err := config.FromYAML(configPath)
 	require.NoError(t, err)
 
-	net, err := noisysockets.NewNoisyNetwork(logger, conf)
+	net, err := noisysockets.NewNetwork(logger, conf)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, net.Close())

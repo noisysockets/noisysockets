@@ -81,7 +81,7 @@ func main() {
 						return fmt.Errorf("failed to read config: %w", err)
 					}
 
-					net, err := noisysockets.NewNoisyNetwork(logger, conf)
+					net, err := noisysockets.NewNetwork(logger, conf)
 					if err != nil {
 						return fmt.Errorf("failed to create noisy socket: %w", err)
 					}
@@ -165,7 +165,7 @@ func main() {
 						return fmt.Errorf("failed to read config: %w", err)
 					}
 
-					net, err := noisysockets.NewNoisyNetwork(logger, conf)
+					net, err := noisysockets.NewNetwork(logger, conf)
 					if err != nil {
 						return fmt.Errorf("failed to create noisy socket: %w", err)
 					}

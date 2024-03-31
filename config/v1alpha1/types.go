@@ -30,8 +30,6 @@ type Config struct {
 	PrivateKey string `yaml:"privateKey" mapstructure:"privateKey"`
 	// IPs is a list of IP addresses assigned to this socket.
 	IPs []string `yaml:"ips" mapstructure:"ips"`
-	// DefaultGatewayPeerName is the optional hostname of the peer to use as the default gateway for traffic.
-	DefaultGatewayPeerName string `yaml:"defaultGatewayPeerName" mapstructure:"defaultGatewayPeerName"`
 	// DNSServers is an optional list of DNS servers to use for host resolution.
 	DNSServers []string `yaml:"dnsServers" mapstructure:"dnsServers"`
 	// Peers is a list of known peers to which this socket can send and receive packets.
@@ -49,6 +47,8 @@ type WireGuardPeerConfig struct {
 	Endpoint string `yaml:"endpoint" mapstructure:"endpoint"`
 	// IPs is a list of IP addresses assigned to the peer.
 	IPs []string `yaml:"ips" mapstructure:"ips"`
+	// DefaultGateway indicates whether this peer should be used as the default gateway for traffic.
+	DefaultGateway bool `yaml:"defaultGateway" mapstructure:"defaultGateway"`
 }
 
 func (c Config) GetKind() string {

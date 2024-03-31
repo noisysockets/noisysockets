@@ -33,6 +33,7 @@ package noisysockets
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"syscall"
@@ -54,6 +55,7 @@ var (
 )
 
 type sourceSink struct {
+	logger         *slog.Logger
 	pd             *peerDirectory
 	stack          *stack.Stack
 	ep             *channel.Endpoint
@@ -62,8 +64,9 @@ type sourceSink struct {
 	defaultGateway *transport.NoisePublicKey
 }
 
-func newSourceSink(pd *peerDirectory, s *stack.Stack, defaultGateway *transport.NoisePublicKey) (*sourceSink, error) {
+func newSourceSink(logger *slog.Logger, pd *peerDirectory, s *stack.Stack, defaultGateway *transport.NoisePublicKey) (*sourceSink, error) {
 	ss := &sourceSink{
+		logger:         logger,
 		pd:             pd,
 		stack:          s,
 		ep:             channel.New(queueSize, uint32(transport.DefaultMTU), ""),
@@ -112,14 +115,14 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []transport.
 
 			peerAddr = netip.AddrFrom16(hdr.DestinationAddress().As16())
 		default:
-			return fmt.Errorf("unknown network protocol")
+			return fmt.Errorf("unknown network protocol: %w", syscall.EAFNOSUPPORT)
 		}
 
 		var ok bool
 		destinations[idx], ok = ss.pd.LookupPeerByAddress(peerAddr)
 		if !ok {
 			if ss.defaultGateway == nil {
-				return fmt.Errorf("unknown destination address")
+				return fmt.Errorf("unknown destination address %w", syscall.EADDRNOTAVAIL)
 			}
 
 			destinations[idx] = *ss.defaultGateway
@@ -170,8 +173,8 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []transport.
 	return count, nil
 }
 
-func (ss *sourceSink) Write(bufs [][]byte, _ []transport.NoisePublicKey, offset int) (int, error) {
-	for _, buf := range bufs {
+func (ss *sourceSink) Write(bufs [][]byte, sources []transport.NoisePublicKey, offset int) (int, error) {
+	for i, buf := range bufs {
 		if len(buf) <= offset {
 			continue
 		}
@@ -179,8 +182,52 @@ func (ss *sourceSink) Write(bufs [][]byte, _ []transport.NoisePublicKey, offset 
 		pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(buf[offset:])})
 		switch buf[offset] >> 4 {
 		case 4:
+			// Validate source addresses to prevent spoofing.
+			if ss.defaultGateway == nil || sources[i] != *ss.defaultGateway {
+				hdr := header.IPv4(buf[offset:])
+				if !hdr.IsValid(pkt.Size()) {
+					ss.logger.Warn("Invalid IPv4 header")
+					continue
+				}
+
+				peerAddr := netip.AddrFrom4(hdr.SourceAddress().As4())
+
+				pk, ok := ss.pd.LookupPeerByAddress(peerAddr)
+				if !ok {
+					ss.logger.Warn("Unknown source address", "ip", peerAddr.String())
+					continue
+				}
+
+				if pk != sources[i] {
+					ss.logger.Warn("Invalid source address for peer", "ip", peerAddr.String())
+					continue
+				}
+			}
+
 			ss.ep.InjectInbound(header.IPv4ProtocolNumber, pkt)
 		case 6:
+			// Validate source addresses to prevent spoofing.
+			if ss.defaultGateway == nil || sources[i] != *ss.defaultGateway {
+				hdr := header.IPv6(pkt.NetworkHeader().View().AsSlice())
+				if !hdr.IsValid(pkt.Size()) {
+					ss.logger.Warn("Invalid IPv6 header")
+					continue
+				}
+
+				peerAddr := netip.AddrFrom16(hdr.SourceAddress().As16())
+
+				pk, ok := ss.pd.LookupPeerByAddress(peerAddr)
+				if !ok {
+					ss.logger.Warn("Unknown source address", "ip", peerAddr.String())
+					continue
+				}
+
+				if pk != sources[i] {
+					ss.logger.Warn("Invalid source address for peer", "ip", peerAddr.String())
+					continue
+				}
+			}
+
 			ss.ep.InjectInbound(header.IPv6ProtocolNumber, pkt)
 		default:
 			return 0, syscall.EAFNOSUPPORT
