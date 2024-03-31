@@ -35,7 +35,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func TestNetwork(t *testing.T) {
+func TestNetwork_TCPServerClient(t *testing.T) {
 	logger := slogt.New(t)
 
 	serverPrivateKey, err := transport.NewPrivateKey()
@@ -146,6 +146,123 @@ func TestNetwork(t *testing.T) {
 
 		if string(body) != "Hello, world!" {
 			return fmt.Errorf("unexpected body: %s", string(body))
+		}
+
+		return nil
+	})
+
+	require.NoError(t, g.Wait())
+
+	// Wait for everything to close.
+	time.Sleep(time.Second)
+}
+
+func TestNetwork_UDPServerClient(t *testing.T) {
+	logger := slogt.New(t)
+
+	serverPrivateKey, err := transport.NewPrivateKey()
+	require.NoError(t, err)
+
+	clientPrivateKey, err := transport.NewPrivateKey()
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		conf := v1alpha1.Config{
+			Name:       "server",
+			ListenPort: 12345,
+			PrivateKey: serverPrivateKey.String(),
+			IPs:        []string{"10.7.0.1"},
+			Peers: []v1alpha1.WireGuardPeerConfig{
+				{
+					PublicKey: clientPrivateKey.PublicKey().String(),
+					IPs:       []string{"10.7.0.2"},
+				},
+			},
+		}
+
+		net, err := noisysockets.NewNetwork(logger, &conf)
+		if err != nil {
+			return err
+		}
+		defer net.Close()
+
+		conn, err := net.ListenPacket("udp", "0.0.0.0:10000")
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+
+		// A little UDP echo server.
+		go func() {
+			buf := make([]byte, 1024)
+
+			for {
+				n, addr, err := conn.ReadFrom(buf)
+				if err != nil {
+					logger.Error("Failed to read", "error", err)
+					return
+				}
+
+				if _, err := conn.WriteTo(buf[:n], addr); err != nil {
+					logger.Error("Failed to write", "error", err)
+					return
+				}
+			}
+		}()
+
+		<-ctx.Done()
+
+		return conn.Close()
+	})
+
+	g.Go(func() error {
+		defer cancel()
+
+		conf := v1alpha1.Config{
+			Name:       "client",
+			ListenPort: 12346,
+			PrivateKey: clientPrivateKey.String(),
+			IPs:        []string{"10.7.0.2"},
+			Peers: []v1alpha1.WireGuardPeerConfig{
+				{
+					Name:      "server",
+					PublicKey: serverPrivateKey.PublicKey().String(),
+					Endpoint:  "localhost:12345",
+					IPs:       []string{"10.7.0.1"},
+				},
+			},
+		}
+
+		net, err := noisysockets.NewNetwork(logger, &conf)
+		if err != nil {
+			return err
+		}
+		defer net.Close()
+
+		// Wait for server to start.
+		time.Sleep(time.Second)
+
+		conn, err := net.Dial("udp", "server:10000")
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+
+		if _, err := conn.Write([]byte("Hello, world!")); err != nil {
+			return err
+		}
+
+		buf := make([]byte, 1024)
+		n, err := conn.Read(buf)
+		if err != nil {
+			return err
+		}
+
+		if string(buf[:n]) != "Hello, world!" {
+			return fmt.Errorf("unexpected message: %s", string(buf[:n]))
 		}
 
 		return nil

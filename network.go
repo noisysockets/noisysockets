@@ -404,7 +404,7 @@ func (n *Network) DialContext(ctx context.Context, network, address string) (net
 	return nil, firstErr
 }
 
-// Listen creates a network listener.
+// Listen creates a network listener (only TCP is currently supported).
 func (n *Network) Listen(network, address string) (net.Listener, error) {
 	acceptV4, acceptV6 := true, true
 	matches := protoSplitter.FindStringSubmatch(network)
@@ -430,7 +430,7 @@ func (n *Network) Listen(network, address string) (net.Listener, error) {
 	}
 
 	var addr netip.AddrPort
-	if host != "" {
+	if host != "" && !(host == "0.0.0.0" || host == "[::]") {
 		ip, err := netip.ParseAddr(host)
 		if err != nil {
 			return nil, &net.OpError{Op: "listen", Err: err}
@@ -462,7 +462,9 @@ func (n *Network) Listen(network, address string) (net.Listener, error) {
 	return gonet.ListenTCP(n.stack, fa, pn)
 }
 
-// ListenPacket creates a network packet listener.
+// ListenPacket creates a network packet listener (only UDP is currently supported).
+// Caveat: The SetDeadline, SetReadDeadline, or SetWriteDeadline f8unctions on the returned
+// PacketConn may not work as expected (due to limitations in the gVisor network stack).
 func (n *Network) ListenPacket(network, address string) (net.PacketConn, error) {
 	acceptV4, acceptV6 := true, true
 	matches := protoSplitter.FindStringSubmatch(network)
@@ -488,7 +490,7 @@ func (n *Network) ListenPacket(network, address string) (net.PacketConn, error) 
 	}
 
 	var addr netip.AddrPort
-	if host != "" {
+	if host != "" && !(host == "0.0.0.0" || host == "[::]") {
 		ip, err := netip.ParseAddr(host)
 		if err != nil {
 			return nil, &net.OpError{Op: "listen", Err: err}
