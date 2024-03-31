@@ -520,7 +520,12 @@ func (n *Network) ListenPacket(network, address string) (net.PacketConn, error) 
 	return gonet.DialUDP(n.stack, &fa, nil, pn)
 }
 
-// GetPeerEndpoint returns the public address of a peer (if known).
+// LookupPeerByAddress returns the public key of a peer by its address.
+func (n *Network) LookupPeerByAddress(addr netip.Addr) (transport.NoisePublicKey, bool) {
+	return n.pd.LookupPeerByAddress(addr)
+}
+
+// GetPeerEndpoint returns the public address/endpoint of a peer (if known).
 func (n *Network) GetPeerEndpoint(publicKey transport.NoisePublicKey) (netip.AddrPort, error) {
 	peer := n.transport.LookupPeer(publicKey)
 	if peer == nil {
