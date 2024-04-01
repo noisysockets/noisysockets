@@ -14,6 +14,8 @@ When you import Noisy Sockets Go Modules will attempt to use the gVisor master b
 
 ```shell
 go get -u gvisor.dev/gvisor@go
+# To fix a transitive dependency issue.
+go get -u google.golang.org/grpc/status
 ```
 
 ## Performance

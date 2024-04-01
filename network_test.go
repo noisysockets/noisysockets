@@ -285,23 +285,6 @@ func TestNetwork_GatewayAndDNS(t *testing.T) {
 		require.NoError(t, testNet.Remove(ctx))
 	})
 
-	// Spin up a dnsmasq that forwards DNS queries to the host.
-	dnsmasqReq := testcontainers.ContainerRequest{
-		Image:        "andyshinn/dnsmasq:2.83",
-		ExposedPorts: []string{"53/tcp", "53/udp"},
-		Networks:     []string{testNet.Name},
-		WaitingFor:   wait.ForListeningPort("53/tcp"),
-	}
-
-	dnsmasqC, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: dnsmasqReq,
-		Started:          true,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, dnsmasqC.Terminate(ctx))
-	})
-
 	// Spin up an nginx server.
 	nginxReq := testcontainers.ContainerRequest{
 		Image:        "nginx:latest",
@@ -324,7 +307,7 @@ func TestNetwork_GatewayAndDNS(t *testing.T) {
 
 	// Spin up a WireGuard gateway.
 	wgReq := testcontainers.ContainerRequest{
-		Image:        "masipcat/wireguard-go:latest",
+		Image:        "ghcr.io/noisysockets/gateway:v0.1.0",
 		ExposedPorts: []string{"51820/udp"},
 		Files: []testcontainers.ContainerFile{
 			{HostFilePath: filepath.Join(pwd, "testdata/wg0.conf"), ContainerFilePath: "/etc/wireguard/wg0.conf", FileMode: 0o400},
@@ -354,7 +337,7 @@ func TestNetwork_GatewayAndDNS(t *testing.T) {
 	outputDir := t.TempDir()
 	configPath := filepath.Join(outputDir, "noisysockets.yaml")
 
-	require.NoError(t, generateConfig(ctx, configPath, wgC, dnsmasqC))
+	require.NoError(t, generateConfig(ctx, configPath, wgC))
 
 	logger := slogt.New(t)
 
@@ -382,7 +365,7 @@ func TestNetwork_GatewayAndDNS(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
-func generateConfig(ctx context.Context, configPath string, wgC, dnsmasqC testcontainers.Container) error {
+func generateConfig(ctx context.Context, configPath string, wgC testcontainers.Container) error {
 	wgHost, err := wgC.Host(ctx)
 	if err != nil {
 		return err
@@ -393,19 +376,12 @@ func generateConfig(ctx context.Context, configPath string, wgC, dnsmasqC testco
 		return err
 	}
 
-	dnsServer, err := dnsmasqC.ContainerIP(ctx)
-	if err != nil {
-		return err
-	}
-
 	var renderedConfig strings.Builder
 	tmpl := template.Must(template.ParseFiles("testdata/noisysockets.yaml.tmpl"))
 	if err := tmpl.Execute(&renderedConfig, struct {
-		Endpoint  string
-		DNSServer string
+		Endpoint string
 	}{
-		Endpoint:  wgHost + ":" + wgPort.Port(),
-		DNSServer: dnsServer,
+		Endpoint: wgHost + ":" + wgPort.Port(),
 	}); err != nil {
 		return err
 	}
