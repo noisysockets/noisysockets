@@ -53,7 +53,7 @@ func TestNetwork_TCPServerClient(t *testing.T) {
 			ListenPort: 12345,
 			PrivateKey: serverPrivateKey.String(),
 			IPs:        []string{"10.7.0.1"},
-			Peers: []v1alpha1.WireGuardPeerConfig{
+			Peers: []v1alpha1.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.PublicKey().String(),
 					IPs:       []string{"10.7.0.2"},
@@ -104,7 +104,7 @@ func TestNetwork_TCPServerClient(t *testing.T) {
 			ListenPort: 12346,
 			PrivateKey: clientPrivateKey.String(),
 			IPs:        []string{"10.7.0.2"},
-			Peers: []v1alpha1.WireGuardPeerConfig{
+			Peers: []v1alpha1.PeerConfig{
 				{
 					Name:      "server",
 					PublicKey: serverPrivateKey.PublicKey().String(),
@@ -175,7 +175,7 @@ func TestNetwork_UDPServerClient(t *testing.T) {
 			ListenPort: 12345,
 			PrivateKey: serverPrivateKey.String(),
 			IPs:        []string{"10.7.0.1"},
-			Peers: []v1alpha1.WireGuardPeerConfig{
+			Peers: []v1alpha1.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.PublicKey().String(),
 					IPs:       []string{"10.7.0.2"},
@@ -226,7 +226,7 @@ func TestNetwork_UDPServerClient(t *testing.T) {
 			ListenPort: 12346,
 			PrivateKey: clientPrivateKey.String(),
 			IPs:        []string{"10.7.0.2"},
-			Peers: []v1alpha1.WireGuardPeerConfig{
+			Peers: []v1alpha1.PeerConfig{
 				{
 					Name:      "server",
 					PublicKey: serverPrivateKey.PublicKey().String(),
