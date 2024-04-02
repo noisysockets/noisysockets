@@ -10,6 +10,7 @@
 package config_test
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/noisysockets/noisysockets/config"
@@ -26,4 +27,19 @@ func TestFromYAML(t *testing.T) {
 	// Just check a few fields to make sure the config was parsed correctly.
 	require.Equal(t, uint16(12346), conf.ListenPort)
 	require.Equal(t, "6cvvZyj+EVL4DHjUKeVF7EUBfgR2mJO4php2Gdv9FVw=", conf.Peers[0].PublicKey)
+}
+
+func TestSaveToYAML(t *testing.T) {
+	conf, err := config.FromYAML("testdata/config.yaml")
+	require.NoError(t, err)
+
+	outputDir := t.TempDir()
+
+	err = config.SaveToYAML(filepath.Join(outputDir, "config.yaml"), conf)
+	require.NoError(t, err)
+
+	conf2, err := config.FromYAML(filepath.Join(outputDir, "config.yaml"))
+	require.NoError(t, err)
+
+	require.Equal(t, conf, conf2)
 }

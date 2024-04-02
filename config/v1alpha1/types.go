@@ -29,9 +29,9 @@ type Config struct {
 	// PrivateKey is the private key for this socket.
 	PrivateKey string `yaml:"privateKey" mapstructure:"privateKey"`
 	// IPs is a list of IP addresses assigned to this socket.
-	IPs []string `yaml:"ips" mapstructure:"ips"`
+	IPs []string `yaml:"ips,omitempty" mapstructure:"ips,omitempty"`
 	// DNSServers is an optional list of DNS servers to use for host resolution.
-	DNSServers []string `yaml:"dnsServers" mapstructure:"dnsServers"`
+	DNSServers []string `yaml:"dnsServers,omitempty" mapstructure:"dnsServers,omitempty"`
 	// Peers is a list of known peers to which this socket can send and receive packets.
 	Peers []WireGuardPeerConfig `yaml:"peers" mapstructure:"peers"`
 }
@@ -46,7 +46,7 @@ type WireGuardPeerConfig struct {
 	// If not specified, we will attempt to discover the peer's endpoint from its packets.
 	Endpoint string `yaml:"endpoint" mapstructure:"endpoint"`
 	// IPs is a list of IP addresses assigned to the peer.
-	IPs []string `yaml:"ips" mapstructure:"ips"`
+	IPs []string `yaml:"ips,omitempty" mapstructure:"ips,omitempty"`
 	// DefaultGateway indicates whether this peer should be used as the default gateway for traffic.
 	DefaultGateway bool `yaml:"defaultGateway" mapstructure:"defaultGateway"`
 }

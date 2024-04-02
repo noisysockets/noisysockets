@@ -18,6 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// FromYAML reads a config file from the given path and returns the config object.
 func FromYAML(configPath string) (conf *latest.Config, err error) {
 	confBytes, err := os.ReadFile(configPath)
 	if err != nil {
@@ -56,6 +57,31 @@ func FromYAML(configPath string) (conf *latest.Config, err error) {
 	// TODO: validate config.
 
 	return conf, nil
+}
+
+// SaveToYAML writes the config object to the given path.
+func SaveToYAML(configPath string, versionedConf types.Config) error {
+	var conf *latest.Config
+	if versionedConf.GetAPIVersion() != latest.ApiVersion {
+		var err error
+		conf, err = migrate(versionedConf)
+		if err != nil {
+			return fmt.Errorf("failed to migrate config: %w", err)
+		}
+	} else {
+		conf = versionedConf.(*latest.Config)
+	}
+
+	confBytes, err := yaml.Marshal(conf)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, confBytes, 0o400); err != nil {
+		return fmt.Errorf("failed to write config file %q: %w", configPath, err)
+	}
+
+	return nil
 }
 
 func migrate(_ types.Config) (*latest.Config, error) {

@@ -21,3 +21,13 @@ func TestNewPrivateKey(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, privateKey)
 }
+
+func TestPublicKeyFromPrivateKey(t *testing.T) {
+	privateKey, err := util.NewPrivateKey()
+	require.NoError(t, err)
+	require.NotEmpty(t, privateKey)
+
+	publicKey, err := util.PublicKeyFromPrivateKey(privateKey)
+	require.NoError(t, err)
+	require.NotEmpty(t, publicKey)
+}

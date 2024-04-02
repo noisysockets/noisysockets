@@ -20,3 +20,14 @@ func NewPrivateKey() (string, error) {
 
 	return privateKey.String(), nil
 }
+
+// PublicKeyFromPrivateKey returns the corresponding public key of a base64 encoded Curve25519 private key.
+func PublicKeyFromPrivateKey(privateKeyString string) (string, error) {
+	var privateKey transport.NoisePrivateKey
+	err := privateKey.FromString(privateKeyString)
+	if err != nil {
+		return "", err
+	}
+
+	return privateKey.PublicKey().String(), nil
+}
