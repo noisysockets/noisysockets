@@ -2,7 +2,7 @@
 
 Noisy Sockets is a secure service-to-service communications library based on the [Noise Protocol Framework](https://noiseprotocol.org/). Endpoints are identified by Curve25519 public keys, traffic is encrypted and authenticated using ChaCha20-Poly1305, and sent/received as UDP packets. Noisy Sockets is wire compatible with [WireGuard](https://www.wireguard.com/).
 
-Noisy Sockets implements a drop-in replacement for the standard Go `net` interface, allowing it to be used with any existing Go code. This is implemented using a userspace TCP/IP stack based on [Netstack](https://gvisor.dev/docs/user_guide/networking/) from the [gVisor](https://github.com/google/gvisor) project.
+Noisy Sockets implements a drop-in replacement for the Go `net` package, allowing it to be used with any existing code. This is implemented using a userspace TCP/IP stack based on [Netstack](https://gvisor.dev/docs/user_guide/networking/) from the [gVisor](https://github.com/google/gvisor) project.
 
 ## Usage
 
@@ -14,8 +14,6 @@ When you import Noisy Sockets Go Modules will attempt to use the gVisor master b
 
 ```shell
 go get -u gvisor.dev/gvisor@go
-# To fix a transitive dependency issue.
-go get -u google.golang.org/grpc/status
 ```
 
 ## Performance
@@ -23,3 +21,9 @@ go get -u google.golang.org/grpc/status
 Surprisingly good, I've been able to saturate a 1Gbps link with approximately two CPU cores and a single noisy socket. Interestingly it appears to outperform the kernel implementation of WireGuard.
 
 Some preliminary benchmark results can be found in the [benchmark](./benchmark) directory.
+
+## Credits
+
+Noisy Sockets is based on code originally from the [wireguard-go](https://git.zx2c4.com/wireguard-go) project by Jason A. Donenfeld.
+
+WireGuard is a registered trademark of Jason A. Donenfeld.

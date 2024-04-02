@@ -275,7 +275,7 @@ func (n *Network) Close() error {
 }
 
 // LookupHost resolves host names (encoded public keys) to IP addresses.
-func (n *Network) LookupHostContext(ctx context.Context, host string) ([]string, error) {
+func (n *Network) LookupHost(host string) ([]string, error) {
 	// Host is an IP address.
 	if addr, err := netip.ParseAddr(host); err == nil {
 		return []string{addr.String()}, nil
@@ -294,7 +294,7 @@ func (n *Network) LookupHostContext(ctx context.Context, host string) ([]string,
 	// Host is a DNS name.
 	if len(n.dnsServers) > 0 {
 		var err error
-		addrs, err = resolveHost(ctx, n.dnsServers, host, n.DialContext)
+		addrs, err = resolveHost(context.Background(), n.dnsServers, host, n.DialContext)
 		if err != nil {
 			return nil, err
 		}
@@ -335,7 +335,7 @@ func (n *Network) DialContext(ctx context.Context, network, address string) (net
 		return nil, &net.OpError{Op: "dial", Err: errNumericPort}
 	}
 
-	allAddr, err := n.LookupHostContext(ctx, host)
+	allAddr, err := n.LookupHost(host)
 	if err != nil {
 		return nil, &net.OpError{Op: "dial", Err: err}
 	}
