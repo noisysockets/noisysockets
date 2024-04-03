@@ -11,6 +11,7 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/noisysockets/noisysockets/config/types"
@@ -59,8 +60,8 @@ func FromYAML(configPath string) (conf *latest.Config, err error) {
 	return conf, nil
 }
 
-// SaveToYAML writes the config object to the given path.
-func SaveToYAML(configPath string, versionedConf types.Config) error {
+// SaveToYAML writes the given config object to the given writer.
+func SaveToYAML(w io.Writer, versionedConf types.Config) error {
 	var conf *latest.Config
 	if versionedConf.GetAPIVersion() != latest.ApiVersion {
 		var err error
@@ -72,13 +73,8 @@ func SaveToYAML(configPath string, versionedConf types.Config) error {
 		conf = versionedConf.(*latest.Config)
 	}
 
-	confBytes, err := yaml.Marshal(conf)
-	if err != nil {
+	if err := yaml.NewEncoder(w).Encode(conf); err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-
-	if err := os.WriteFile(configPath, confBytes, 0o400); err != nil {
-		return fmt.Errorf("failed to write config file %q: %w", configPath, err)
 	}
 
 	return nil

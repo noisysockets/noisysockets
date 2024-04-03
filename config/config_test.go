@@ -10,6 +10,7 @@
 package config_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -33,12 +34,16 @@ func TestSaveToYAML(t *testing.T) {
 	conf, err := config.FromYAML("testdata/config.yaml")
 	require.NoError(t, err)
 
-	outputDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	err = config.SaveToYAML(filepath.Join(outputDir, "config.yaml"), conf)
+	w, err := os.Create(configPath)
 	require.NoError(t, err)
 
-	conf2, err := config.FromYAML(filepath.Join(outputDir, "config.yaml"))
+	err = config.SaveToYAML(w, conf)
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	conf2, err := config.FromYAML(configPath)
 	require.NoError(t, err)
 
 	require.Equal(t, conf, conf2)
