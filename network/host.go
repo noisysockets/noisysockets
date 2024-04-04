@@ -14,17 +14,21 @@ import (
 	stdnet "net"
 )
 
-// StdNet is an implementation of the Network interface using the standard library's network operations.
-// This is used in integration testing to avoid needing to interact with WireGuard directly.
-type StdNet struct {
+// Host returns a Network implementation that uses the standard library's network operations.
+// This is used in integration testing to avoid needing to mock out WireGuard.
+func Host() Network {
+	return &hostNetwork{}
+}
+
+type hostNetwork struct {
 	hasV4, hasV6 *bool
 }
 
-func (net *StdNet) Close() error {
+func (net *hostNetwork) Close() error {
 	return nil
 }
 
-func (net *StdNet) HasIPv4() bool {
+func (net *hostNetwork) HasIPv4() bool {
 	if net.hasV4 == nil {
 		var hasV4 bool
 
@@ -40,7 +44,7 @@ func (net *StdNet) HasIPv4() bool {
 	return *net.hasV4
 }
 
-func (net *StdNet) HasIPv6() bool {
+func (net *hostNetwork) HasIPv6() bool {
 	if net.hasV6 == nil {
 		var hasV6 bool
 
@@ -56,23 +60,23 @@ func (net *StdNet) HasIPv6() bool {
 	return *net.hasV6
 }
 
-func (net *StdNet) LookupHost(host string) ([]string, error) {
+func (net *hostNetwork) LookupHost(host string) ([]string, error) {
 	return stdnet.LookupHost(host)
 }
 
-func (net *StdNet) Dial(network, address string) (stdnet.Conn, error) {
+func (net *hostNetwork) Dial(network, address string) (stdnet.Conn, error) {
 	return stdnet.Dial(network, address)
 }
 
-func (net *StdNet) DialContext(ctx context.Context, network, address string) (stdnet.Conn, error) {
+func (net *hostNetwork) DialContext(ctx context.Context, network, address string) (stdnet.Conn, error) {
 	var d stdnet.Dialer
 	return d.DialContext(ctx, network, address)
 }
 
-func (net *StdNet) Listen(network, address string) (stdnet.Listener, error) {
+func (net *hostNetwork) Listen(network, address string) (stdnet.Listener, error) {
 	return stdnet.Listen(network, address)
 }
 
-func (net *StdNet) ListenPacket(network, address string) (stdnet.PacketConn, error) {
+func (net *hostNetwork) ListenPacket(network, address string) (stdnet.PacketConn, error) {
 	return stdnet.ListenPacket(network, address)
 }

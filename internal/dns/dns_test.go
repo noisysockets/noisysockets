@@ -59,8 +59,7 @@ func TestLookupHost(t *testing.T) {
 	time.Sleep(time.Second)
 
 	// Perform a DNS query.
-	net := &network.StdNet{}
-	addrs, err := dns.LookupHost(net, []netip.AddrPort{dnsServer}, "www.noisysockets.github.com")
+	addrs, err := dns.LookupHost(network.Host(), []netip.AddrPort{dnsServer}, "www.noisysockets.github.com")
 	require.NoError(t, err)
 
 	require.Len(t, addrs, 2)

@@ -40,13 +40,11 @@
 package addrselect
 
 import (
-	"context"
-	stdnet "net"
 	"net/netip"
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/mock"
+	"github.com/noisysockets/noisysockets/network"
 )
 
 func TestSortByRFC6724(t *testing.T) {
@@ -161,7 +159,7 @@ func TestSortByRFC6724(t *testing.T) {
 		copy(inCopy, tt.in)
 		srcCopy := make([]netip.Addr, len(tt.in))
 		copy(srcCopy, tt.srcs)
-		SortByRFC6724withSrcs(&mockNet{}, inCopy, srcCopy)
+		SortByRFC6724withSrcs(network.Host(), inCopy, srcCopy)
 		if !reflect.DeepEqual(inCopy, tt.want) {
 			t.Errorf("test %d:\nin = %s\ngot: %s\nwant: %s\n", i, tt.in, inCopy, tt.want)
 		}
@@ -173,7 +171,7 @@ func TestSortByRFC6724(t *testing.T) {
 				inCopy[j], inCopy[k] = inCopy[k], inCopy[j]
 				srcCopy[j], srcCopy[k] = srcCopy[k], srcCopy[j]
 			}
-			SortByRFC6724withSrcs(&mockNet{}, inCopy, srcCopy)
+			SortByRFC6724withSrcs(network.Host(), inCopy, srcCopy)
 			if !reflect.DeepEqual(inCopy, tt.want) {
 				t.Errorf("test %d, starting backwards:\nin = %s\ngot: %s\nwant: %s\n", i, tt.in, inCopy, tt.want)
 			}
@@ -345,40 +343,4 @@ func TestRFC6724CommonPrefixLength(t *testing.T) {
 			t.Errorf("%d. commonPrefixLen(%s, %s) = %d; want %d", i, tt.a, tt.b, got, tt.want)
 		}
 	}
-
-}
-
-type mockNet struct {
-	mock.Mock
-}
-
-func (n *mockNet) Close() error { return nil }
-
-func (n *mockNet) HasIPv4() bool { return true }
-
-func (n *mockNet) HasIPv6() bool { return true }
-
-func (n *mockNet) LookupHost(host string) ([]string, error) {
-	args := n.Called(host)
-	return args.Get(0).([]string), args.Error(1)
-}
-
-func (n *mockNet) Dial(network, address string) (stdnet.Conn, error) {
-	args := n.Called(network, address)
-	return args.Get(0).(stdnet.Conn), args.Error(1)
-}
-
-func (n *mockNet) DialContext(ctx context.Context, network, address string) (stdnet.Conn, error) {
-	args := n.Called(ctx, network, address)
-	return args.Get(0).(stdnet.Conn), args.Error(1)
-}
-
-func (n *mockNet) Listen(network, address string) (stdnet.Listener, error) {
-	args := n.Called(network, address)
-	return args.Get(0).(stdnet.Listener), args.Error(1)
-}
-
-func (n *mockNet) ListenPacket(network, address string) (stdnet.PacketConn, error) {
-	args := n.Called(network, address)
-	return args.Get(0).(stdnet.PacketConn), args.Error(1)
 }
