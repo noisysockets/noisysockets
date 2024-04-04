@@ -28,14 +28,14 @@ import (
 	"github.com/noisysockets/noisysockets/config"
 	"github.com/noisysockets/noisysockets/config/v1alpha1"
 	"github.com/noisysockets/noisysockets/internal/transport"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
-	"golang.org/x/sync/errgroup"
 )
 
-func TestNetwork_TCPServerClient(t *testing.T) {
+func TestNetwork(t *testing.T) {
 	logger := slogt.New(t)
 
 	serverPrivateKey, err := transport.NewPrivateKey()
@@ -45,9 +45,14 @@ func TestNetwork_TCPServerClient(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	g, ctx := errgroup.WithContext(ctx)
+	t.Cleanup(func() {
+		cancel()
 
-	g.Go(func() error {
+		// Wait for everything to close.
+		time.Sleep(time.Second)
+	})
+
+	go func() {
 		conf := v1alpha1.Config{
 			Name:       "server",
 			ListenPort: 12345,
@@ -63,7 +68,8 @@ func TestNetwork_TCPServerClient(t *testing.T) {
 
 		net, err := noisysockets.NewNetwork(logger, &conf)
 		if err != nil {
-			return err
+			logger.Error("Failed to create server network", "error", err)
+			return
 		}
 		defer net.Close()
 
@@ -77,6 +83,7 @@ func TestNetwork_TCPServerClient(t *testing.T) {
 		}
 		defer srv.Close()
 
+		// A little HTTP server.
 		go func() {
 			lis, err := net.Listen("tcp", ":80")
 			if err != nil {
@@ -91,35 +98,62 @@ func TestNetwork_TCPServerClient(t *testing.T) {
 			}
 		}()
 
+		// A little UDP echo server.
+		udpConn, err := net.ListenPacket("udp", "0.0.0.0:10000")
+		if err != nil {
+			logger.Error("Failed to listen", "error", err)
+			return
+		}
+		defer udpConn.Close()
+
+		go func() {
+			buf := make([]byte, 1024)
+			for {
+				n, addr, err := udpConn.ReadFrom(buf)
+				if err != nil {
+					if errors.Is(err, io.EOF) {
+						return
+					}
+
+					logger.Error("Failed to read", "error", err)
+					return
+				}
+
+				if _, err := udpConn.WriteTo(buf[:n], addr); err != nil {
+					logger.Error("Failed to write", "error", err)
+					return
+				}
+			}
+		}()
+
 		<-ctx.Done()
 
-		return srv.Close()
+		_ = srv.Close()
+		_ = udpConn.Close()
+	}()
+
+	conf := v1alpha1.Config{
+		Name:       "client",
+		ListenPort: 12346,
+		PrivateKey: clientPrivateKey.String(),
+		IPs:        []string{"10.7.0.2"},
+		Peers: []v1alpha1.PeerConfig{
+			{
+				Name:      "server",
+				PublicKey: serverPrivateKey.PublicKey().String(),
+				Endpoint:  "localhost:12345",
+				IPs:       []string{"10.7.0.1"},
+			},
+		},
+	}
+
+	net, err := noisysockets.NewNetwork(logger, &conf)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, net.Close())
 	})
 
-	g.Go(func() error {
-		defer cancel()
-
-		conf := v1alpha1.Config{
-			Name:       "client",
-			ListenPort: 12346,
-			PrivateKey: clientPrivateKey.String(),
-			IPs:        []string{"10.7.0.2"},
-			Peers: []v1alpha1.PeerConfig{
-				{
-					Name:      "server",
-					PublicKey: serverPrivateKey.PublicKey().String(),
-					Endpoint:  "localhost:12345",
-					IPs:       []string{"10.7.0.1"},
-				},
-			},
-		}
-
-		net, err := noisysockets.NewNetwork(logger, &conf)
-		if err != nil {
-			return err
-		}
-		defer net.Close()
-
+	t.Run("TCP", func(t *testing.T) {
 		client := &http.Client{
 			Transport: &http.Transport{
 				Dial: net.Dial,
@@ -130,151 +164,38 @@ func TestNetwork_TCPServerClient(t *testing.T) {
 		time.Sleep(time.Second)
 
 		resp, err := client.Get("http://server")
-		if err != nil {
-			return err
-		}
-		defer resp.Body.Close()
+		require.NoError(t, err)
 
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-		}
+		t.Cleanup(func() {
+			require.NoError(t, resp.Body.Close())
+		})
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return err
-		}
+		require.NoError(t, err)
 
-		if string(body) != "Hello, world!" {
-			return fmt.Errorf("unexpected body: %s", string(body))
-		}
-
-		return nil
+		assert.Equal(t, "Hello, world!", string(body))
 	})
 
-	require.NoError(t, g.Wait())
-
-	// Wait for everything to close.
-	time.Sleep(time.Second)
-}
-
-func TestNetwork_UDPServerClient(t *testing.T) {
-	logger := slogt.New(t)
-
-	serverPrivateKey, err := transport.NewPrivateKey()
-	require.NoError(t, err)
-
-	clientPrivateKey, err := transport.NewPrivateKey()
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	g, ctx := errgroup.WithContext(ctx)
-
-	g.Go(func() error {
-		conf := v1alpha1.Config{
-			Name:       "server",
-			ListenPort: 12345,
-			PrivateKey: serverPrivateKey.String(),
-			IPs:        []string{"10.7.0.1"},
-			Peers: []v1alpha1.PeerConfig{
-				{
-					PublicKey: clientPrivateKey.PublicKey().String(),
-					IPs:       []string{"10.7.0.2"},
-				},
-			},
-		}
-
-		net, err := noisysockets.NewNetwork(logger, &conf)
-		if err != nil {
-			return err
-		}
-		defer net.Close()
-
-		conn, err := net.ListenPacket("udp", "0.0.0.0:10000")
-		if err != nil {
-			return err
-		}
-		defer conn.Close()
-
-		// A little UDP echo server.
-		go func() {
-			buf := make([]byte, 1024)
-
-			for {
-				n, addr, err := conn.ReadFrom(buf)
-				if err != nil {
-					logger.Error("Failed to read", "error", err)
-					return
-				}
-
-				if _, err := conn.WriteTo(buf[:n], addr); err != nil {
-					logger.Error("Failed to write", "error", err)
-					return
-				}
-			}
-		}()
-
-		<-ctx.Done()
-
-		return conn.Close()
-	})
-
-	g.Go(func() error {
-		defer cancel()
-
-		conf := v1alpha1.Config{
-			Name:       "client",
-			ListenPort: 12346,
-			PrivateKey: clientPrivateKey.String(),
-			IPs:        []string{"10.7.0.2"},
-			Peers: []v1alpha1.PeerConfig{
-				{
-					Name:      "server",
-					PublicKey: serverPrivateKey.PublicKey().String(),
-					Endpoint:  "localhost:12345",
-					IPs:       []string{"10.7.0.1"},
-				},
-			},
-		}
-
-		net, err := noisysockets.NewNetwork(logger, &conf)
-		if err != nil {
-			return err
-		}
-		defer net.Close()
-
-		// Wait for server to start.
-		time.Sleep(time.Second)
-
+	t.Run("UDP", func(t *testing.T) {
 		conn, err := net.Dial("udp", "server:10000")
-		if err != nil {
-			return err
-		}
+		require.NoError(t, err)
 		defer conn.Close()
 
 		if _, err := conn.Write([]byte("Hello, world!")); err != nil {
-			return err
+			t.Fatal(err)
 		}
 
 		buf := make([]byte, 1024)
 		n, err := conn.Read(buf)
-		if err != nil {
-			return err
-		}
+		require.NoError(t, err)
 
-		if string(buf[:n]) != "Hello, world!" {
-			return fmt.Errorf("unexpected message: %s", string(buf[:n]))
-		}
-
-		return nil
+		assert.Equal(t, "Hello, world!", string(buf[:n]))
 	})
-
-	require.NoError(t, g.Wait())
-
-	// Wait for everything to close.
-	time.Sleep(time.Second)
 }
 
-func TestNetwork_GatewayAndDNS(t *testing.T) {
+func TestWireGuardCompatibility(t *testing.T) {
 	pwd, err := os.Getwd()
 	require.NoError(t, err)
 
@@ -285,7 +206,6 @@ func TestNetwork_GatewayAndDNS(t *testing.T) {
 		require.NoError(t, testNet.Remove(ctx))
 	})
 
-	// Spin up an nginx server.
 	nginxReq := testcontainers.ContainerRequest{
 		Image:        "nginx:latest",
 		ExposedPorts: []string{"80/tcp"},
