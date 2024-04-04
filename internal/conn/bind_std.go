@@ -303,8 +303,6 @@ func (s *StdNetBind) makeReceiveIPv6(pc *ipv6.PacketConn, conn *net.UDPConn, rxO
 	}
 }
 
-// TODO: When all Binds handle IdealBatchSize, remove this dynamic function and
-// rename the IdealBatchSize constant to BatchSize.
 func (s *StdNetBind) BatchSize() int {
 	if runtime.GOOS == "linux" {
 		return IdealBatchSize

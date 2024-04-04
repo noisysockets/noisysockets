@@ -33,6 +33,6 @@
 
 package conn
 
-func errShouldDisableUDPGSO(err error) bool {
+func errShouldDisableUDPGSO(_ error) bool {
 	return false
 }

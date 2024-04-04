@@ -341,7 +341,13 @@ func TestNetwork_GatewayAndDNS(t *testing.T) {
 
 	logger := slogt.New(t)
 
-	conf, err := config.FromYAML(configPath)
+	configFile, err := os.Open(configPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, configFile.Close())
+	})
+
+	conf, err := config.FromYAML(configFile)
 	require.NoError(t, err)
 
 	net, err := noisysockets.NewNetwork(logger, conf)

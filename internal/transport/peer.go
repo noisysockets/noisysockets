@@ -63,7 +63,7 @@ type Peer struct {
 		sendKeepalive           *Timer
 		newHandshake            *Timer
 		zeroKeyMaterial         *Timer
-		persistentKeepalive     *Timer
+		keepAlive               *Timer
 		handshakeAttempts       atomic.Uint32
 		needAnotherKeepalive    atomic.Bool
 		sentLastMinuteHandshake atomic.Bool
@@ -79,8 +79,8 @@ type Peer struct {
 		inbound  *autodrainingInboundQueue            // sequential ordering of sink writing
 	}
 
-	cookieGenerator             CookieGenerator
-	persistentKeepaliveInterval atomic.Uint32
+	cookieGenerator   CookieGenerator
+	keepAliveInterval atomic.Uint32
 }
 
 func (transport *Transport) NewPeer(pk NoisePublicKey) (*Peer, error) {
@@ -288,8 +288,6 @@ func (peer *Peer) SetEndpoint(endpoint conn.Endpoint) {
 	peer.endpoint.val = endpoint
 }
 
-func (peer *Peer) SetPresharedKey(psk NoisePresharedKey) {
-	peer.handshake.mutex.Lock()
-	peer.handshake.presharedKey = psk
-	peer.handshake.mutex.Unlock()
+func (peer *Peer) SetKeepAliveInterval(interval time.Duration) {
+	peer.keepAliveInterval.Store(uint32(interval.Seconds()))
 }

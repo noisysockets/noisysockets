@@ -161,8 +161,8 @@ func expiredZeroKeyMaterial(peer *Peer) {
 	peer.ZeroAndFlushAll()
 }
 
-func expiredPersistentKeepalive(peer *Peer) {
-	if peer.persistentKeepaliveInterval.Load() > 0 {
+func expiredKeepAlive(peer *Peer) {
+	if peer.keepAliveInterval.Load() > 0 {
 		if err := peer.SendKeepalive(); err != nil {
 			peer.transport.log.Error("Failed to send keepalive",
 				"peer", peer, "error", err)
@@ -228,9 +228,9 @@ func (peer *Peer) timersSessionDerived() {
 
 /* Should be called before a packet with authentication -- keepalive, data, or handshake -- is sent, or after one is received. */
 func (peer *Peer) timersAnyAuthenticatedPacketTraversal() {
-	keepalive := peer.persistentKeepaliveInterval.Load()
-	if keepalive > 0 && peer.timersActive() {
-		peer.timers.persistentKeepalive.Mod(time.Duration(keepalive) * time.Second)
+	keepAlive := peer.keepAliveInterval.Load()
+	if keepAlive > 0 && peer.timersActive() {
+		peer.timers.keepAlive.Mod(time.Duration(keepAlive) * time.Second)
 	}
 }
 
@@ -239,7 +239,7 @@ func (peer *Peer) timersInit() {
 	peer.timers.sendKeepalive = peer.NewTimer(expiredSendKeepalive)
 	peer.timers.newHandshake = peer.NewTimer(expiredNewHandshake)
 	peer.timers.zeroKeyMaterial = peer.NewTimer(expiredZeroKeyMaterial)
-	peer.timers.persistentKeepalive = peer.NewTimer(expiredPersistentKeepalive)
+	peer.timers.keepAlive = peer.NewTimer(expiredKeepAlive)
 }
 
 func (peer *Peer) timersStart() {
@@ -253,5 +253,5 @@ func (peer *Peer) timersStop() {
 	peer.timers.sendKeepalive.DelSync()
 	peer.timers.newHandshake.DelSync()
 	peer.timers.zeroKeyMaterial.DelSync()
-	peer.timers.persistentKeepalive.DelSync()
+	peer.timers.keepAlive.DelSync()
 }

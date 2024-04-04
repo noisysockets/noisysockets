@@ -35,6 +35,6 @@ package conn
 
 import "net"
 
-func supportsUDPOffload(conn *net.UDPConn) (txOffload, rxOffload bool) {
+func supportsUDPOffload(_ *net.UDPConn) (txOffload, rxOffload bool) {
 	return
 }

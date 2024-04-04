@@ -12,23 +12,22 @@ package config
 import (
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/noisysockets/noisysockets/config/types"
 	latest "github.com/noisysockets/noisysockets/config/v1alpha1"
 	"gopkg.in/yaml.v3"
 )
 
-// FromYAML reads a config file from the given path and returns the config object.
-func FromYAML(configPath string) (conf *latest.Config, err error) {
-	confBytes, err := os.ReadFile(configPath)
+// FromYAML reads the given reader and returns a config object.
+func FromYAML(r io.Reader) (conf *latest.Config, err error) {
+	confBytes, err := io.ReadAll(r)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file %q: %w", configPath, err)
+		return nil, fmt.Errorf("failed to read config from reader: %w", err)
 	}
 
 	var typeMeta types.TypeMeta
 	if err := yaml.Unmarshal(confBytes, &typeMeta); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal type meta from config file %q: %w", configPath, err)
+		return nil, fmt.Errorf("failed to unmarshal type meta from config file: %w", err)
 	}
 
 	var versionedConf types.Config
@@ -43,7 +42,7 @@ func FromYAML(configPath string) (conf *latest.Config, err error) {
 	}
 
 	if err := yaml.Unmarshal(confBytes, versionedConf); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config from config file %q: %w", configPath, err)
+		return nil, fmt.Errorf("failed to unmarshal config from config file: %w", err)
 	}
 
 	if versionedConf.GetAPIVersion() != latest.ApiVersion {

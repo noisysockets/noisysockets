@@ -34,7 +34,6 @@ package noisysockets
 import (
 	"fmt"
 	"log/slog"
-	"net"
 	"net/netip"
 	"strconv"
 
@@ -43,9 +42,14 @@ import (
 	"regexp"
 	"time"
 
+	stdnet "net"
+
 	"github.com/noisysockets/noisysockets/config/v1alpha1"
 	"github.com/noisysockets/noisysockets/internal/conn"
+	"github.com/noisysockets/noisysockets/internal/dns"
+	"github.com/noisysockets/noisysockets/internal/dns/addrselect"
 	"github.com/noisysockets/noisysockets/internal/transport"
+	"github.com/noisysockets/noisysockets/network"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -57,8 +61,6 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 )
 
-type DialContextFn func(ctx context.Context, network, address string) (net.Conn, error)
-
 var (
 	errCanceled          = errors.New("operation was canceled")
 	errTimeout           = errors.New("i/o timeout")
@@ -67,17 +69,21 @@ var (
 	errMissingAddress    = errors.New("missing address")
 )
 
-// Network is a userspace WireGuard peer that exposes
-// Dial() and Listen() methods compatible with the net package.
-type Network struct {
-	transport  *transport.Transport
-	pd         *peerDirectory
-	stack      *stack.Stack
-	localAddrs []netip.Addr
-	dnsServers []netip.Addr
+var protoSplitter = regexp.MustCompile(`^(tcp|udp)(4|6)?$`)
+
+type NoisySocketsNetwork struct {
+	transport    *transport.Transport
+	pd           *peerDirectory
+	stack        *stack.Stack
+	localAddrs   []netip.Addr
+	dnsServers   []netip.AddrPort
+	hasV4, hasV6 bool
 }
 
-func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (*Network, error) {
+// NewNetwork creates a new network using the provided configuration.
+// The returned network is a userspace WireGuard peer that exposes
+// Dial() and Listen() methods compatible with the net package.
+func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, error) {
 	var privateKey transport.NoisePrivateKey
 	if err := privateKey.FromString(conf.PrivateKey); err != nil {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
@@ -119,14 +125,26 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (*Network, error) {
 		}
 	}
 
-	var dnsServers []netip.Addr
-	for _, ip := range conf.DNSServers {
-		addr, err := netip.ParseAddr(ip)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse DNS server address: %w", err)
+	var dnsServers []netip.AddrPort
+	for _, addr := range conf.DNSServers {
+		var dnsServer netip.AddrPort
+
+		// Do we have a port specified?
+		if _, _, err := stdnet.SplitHostPort(addr); err == nil {
+			dnsServer, err = netip.ParseAddrPort(addr)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse DNS server address: %w", err)
+			}
+		} else {
+			addr, err := netip.ParseAddr(addr)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse DNS server address: %w", err)
+			}
+
+			dnsServer = netip.AddrPortFrom(addr, 0)
 		}
 
-		dnsServers = append(dnsServers, addr)
+		dnsServers = append(dnsServers, dnsServer)
 	}
 
 	s := stack.New(stack.Options{
@@ -228,20 +246,19 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (*Network, error) {
 			return nil, fmt.Errorf("failed to create peer: %w", err)
 		}
 
+		// Regularly send keepalives to the peer to keep NAT mappings valid.
+		// This could be configurable but I think it's a good default to avoid footguns.
+		peer.SetKeepAliveInterval(25 * time.Second)
+
 		if peerConf.Endpoint != "" {
-			peerEndpointHost, peerEndpointPortStr, err := net.SplitHostPort(peerConf.Endpoint)
+			peerEndpointHost, peerEndpointPortStr, err := stdnet.SplitHostPort(peerConf.Endpoint)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse peer endpoint: %w", err)
 			}
 
-			peerEndpointAddrs, err := net.LookupHost(peerEndpointHost)
+			peerEndpointAddrs, err := stdnet.LookupHost(peerEndpointHost)
 			if err != nil {
 				return nil, fmt.Errorf("failed to resolve peer address: %w", err)
-			}
-
-			peerEndpointAddr, err := netip.ParseAddr(peerEndpointAddrs[0])
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse peer address: %w", err)
 			}
 
 			peerEndpointPort, err := strconv.Atoi(peerEndpointPortStr)
@@ -250,94 +267,118 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (*Network, error) {
 			}
 
 			peer.SetEndpoint(&conn.StdNetEndpoint{
-				AddrPort: netip.AddrPortFrom(peerEndpointAddr, uint16(peerEndpointPort)),
+				AddrPort: netip.AddrPortFrom(netip.MustParseAddr(peerEndpointAddrs[0]), uint16(peerEndpointPort)),
 			})
+
+			if err := peer.SendKeepalive(); err != nil {
+				logger.Warn("Failed to send initial keepalive", "peer", peerConf.Name, "error", err)
+			}
 		}
+
 	}
 
 	if err := t.Up(); err != nil {
 		return nil, fmt.Errorf("failed to bring transport up: %w", err)
 	}
 
-	return &Network{
+	return &NoisySocketsNetwork{
 		transport:  t,
 		pd:         pd,
 		stack:      s,
 		localAddrs: localAddrs,
 		dnsServers: dnsServers,
+		hasV4:      hasV4,
+		hasV6:      hasV6,
 	}, nil
 }
 
-// Close closes the network and releases any resources associated with it.
-func (n *Network) Close() error {
-	n.stack.Close()
-	return n.transport.Close()
+func (net *NoisySocketsNetwork) Close() error {
+	net.stack.Close()
+	return net.transport.Close()
 }
 
-// LookupHost resolves host names (encoded public keys) to IP addresses.
-func (n *Network) LookupHost(host string) ([]string, error) {
+func (net *NoisySocketsNetwork) HasIPv4() bool {
+	return net.hasV4
+}
+
+func (net *NoisySocketsNetwork) HasIPv6() bool {
+	return net.hasV6
+}
+
+func (net *NoisySocketsNetwork) LookupHost(host string) ([]string, error) {
+	var addrs []netip.Addr
+
 	// Host is an IP address.
 	if addr, err := netip.ParseAddr(host); err == nil {
-		return []string{addr.String()}, nil
+		addrs = append(addrs, addr)
+
+		goto LOOKUP_HOST_DONE
 	}
 
 	// Host is the name of a peer.
-	var addrs []string
-	if peerAddresses, ok := n.pd.LookupPeerAddressesByName(host); ok {
-		for _, addr := range peerAddresses {
-			addrs = append(addrs, addr.String())
+	if peerAddrs, ok := net.pd.LookupPeerAddressesByName(host); ok {
+		for _, peerAddr := range peerAddrs {
+			if net.hasV4 && peerAddr.Is4() {
+				addrs = append(addrs, peerAddr)
+			} else if net.hasV6 && peerAddr.Is6() {
+				addrs = append(addrs, peerAddr)
+			}
 		}
 
-		return addrs, nil
+		goto LOOKUP_HOST_DONE
 	}
 
 	// Host is a DNS name.
-	if len(n.dnsServers) > 0 {
+	if len(net.dnsServers) > 0 {
 		var err error
-		addrs, err = resolveHost(context.Background(), n.dnsServers, host, n.DialContext)
+		addrs, err = dns.LookupHost(net, net.dnsServers, host)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if len(addrs) > 0 {
-		return addrs, nil
+LOOKUP_HOST_DONE:
+	if len(addrs) == 0 {
+		return nil, &stdnet.DNSError{Err: "no such host", Name: host}
 	}
 
-	return nil, &net.DNSError{Err: "no such host", Name: host}
+	addrselect.SortByRFC6724(net, addrs)
+
+	addrsStrings := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		addrsStrings = append(addrsStrings, addr.String())
+	}
+
+	return addrsStrings, nil
 }
 
-// Dial creates a network connection.
-func (n *Network) Dial(network, address string) (net.Conn, error) {
-	return n.DialContext(context.Background(), network, address)
+func (net *NoisySocketsNetwork) Dial(network, address string) (stdnet.Conn, error) {
+	return net.DialContext(context.Background(), network, address)
 }
 
-var protoSplitter = regexp.MustCompile(`^(tcp|udp)(4|6)?$`)
-
-// DialContext creates a network connection with a context.
-func (n *Network) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+func (net *NoisySocketsNetwork) DialContext(ctx context.Context, network, address string) (stdnet.Conn, error) {
 	acceptV4, acceptV6 := true, true
 	matches := protoSplitter.FindStringSubmatch(network)
 	if matches == nil {
-		return nil, &net.OpError{Op: "dial", Err: net.UnknownNetworkError(network)}
+		return nil, &stdnet.OpError{Op: "dial", Err: stdnet.UnknownNetworkError(network)}
 	} else if len(matches[2]) != 0 {
 		acceptV4 = matches[2][0] == '4'
 		acceptV6 = !acceptV4
 	}
 
-	host, sport, err := net.SplitHostPort(address)
+	host, sport, err := stdnet.SplitHostPort(address)
 	if err != nil {
-		return nil, &net.OpError{Op: "dial", Err: err}
+		return nil, &stdnet.OpError{Op: "dial", Err: err}
 	}
 
 	port, err := strconv.Atoi(sport)
 	if err != nil || port < 0 || port > 65535 {
-		return nil, &net.OpError{Op: "dial", Err: errNumericPort}
+		return nil, &stdnet.OpError{Op: "dial", Err: errNumericPort}
 	}
 
-	allAddr, err := n.LookupHost(host)
+	allAddr, err := net.LookupHost(host)
 	if err != nil {
-		return nil, &net.OpError{Op: "dial", Err: err}
+		return nil, &stdnet.OpError{Op: "dial", Err: err}
 	}
 
 	var addrs []netip.AddrPort
@@ -348,7 +389,7 @@ func (n *Network) DialContext(ctx context.Context, network, address string) (net
 		}
 	}
 	if len(addrs) == 0 && len(allAddr) != 0 {
-		return nil, &net.OpError{Op: "dial", Err: errNoSuitableAddress}
+		return nil, &stdnet.OpError{Op: "dial", Err: errNoSuitableAddress}
 	}
 
 	var firstErr error
@@ -361,7 +402,7 @@ func (n *Network) DialContext(ctx context.Context, network, address string) (net
 			} else if err == context.DeadlineExceeded {
 				err = errTimeout
 			}
-			return nil, &net.OpError{Op: "dial", Err: err}
+			return nil, &stdnet.OpError{Op: "dial", Err: err}
 		default:
 		}
 
@@ -370,7 +411,7 @@ func (n *Network) DialContext(ctx context.Context, network, address string) (net
 			partialDeadline, err := partialDeadline(time.Now(), deadline, len(addrs)-i)
 			if err != nil {
 				if firstErr == nil {
-					firstErr = &net.OpError{Op: "dial", Err: err}
+					firstErr = &stdnet.OpError{Op: "dial", Err: err}
 				}
 				break
 			}
@@ -383,12 +424,12 @@ func (n *Network) DialContext(ctx context.Context, network, address string) (net
 
 		fa, pn := convertToFullAddr(addr)
 
-		var c net.Conn
+		var c stdnet.Conn
 		switch matches[1] {
 		case "tcp":
-			c, err = gonet.DialContextTCP(dialCtx, n.stack, fa, pn)
+			c, err = gonet.DialContextTCP(dialCtx, net.stack, fa, pn)
 		case "udp":
-			c, err = gonet.DialUDP(n.stack, nil, &fa, pn)
+			c, err = gonet.DialUDP(net.stack, nil, &fa, pn)
 		}
 		if err == nil {
 			return c, nil
@@ -398,55 +439,54 @@ func (n *Network) DialContext(ctx context.Context, network, address string) (net
 		}
 	}
 	if firstErr == nil {
-		firstErr = &net.OpError{Op: "dial", Err: errMissingAddress}
+		firstErr = &stdnet.OpError{Op: "dial", Err: errMissingAddress}
 	}
 
 	return nil, firstErr
 }
 
-// Listen creates a network listener (only TCP is currently supported).
-func (n *Network) Listen(network, address string) (net.Listener, error) {
+func (net *NoisySocketsNetwork) Listen(network, address string) (stdnet.Listener, error) {
 	acceptV4, acceptV6 := true, true
 	matches := protoSplitter.FindStringSubmatch(network)
 	if matches == nil {
-		return nil, &net.OpError{Op: "listen", Err: net.UnknownNetworkError(network)}
+		return nil, &stdnet.OpError{Op: "listen", Err: stdnet.UnknownNetworkError(network)}
 	} else if len(matches[2]) != 0 {
 		acceptV4 = matches[2][0] == '4'
 		acceptV6 = !acceptV4
 	}
 
 	if matches[1] != "tcp" {
-		return nil, &net.OpError{Op: "listen", Err: net.UnknownNetworkError(network)}
+		return nil, &stdnet.OpError{Op: "listen", Err: stdnet.UnknownNetworkError(network)}
 	}
 
-	host, sport, err := net.SplitHostPort(address)
+	host, sport, err := stdnet.SplitHostPort(address)
 	if err != nil {
-		return nil, &net.OpError{Op: "listen", Err: err}
+		return nil, &stdnet.OpError{Op: "listen", Err: err}
 	}
 
 	port, err := strconv.Atoi(sport)
 	if err != nil || port < 0 || port > 65535 {
-		return nil, &net.OpError{Op: "listen", Err: errNumericPort}
+		return nil, &stdnet.OpError{Op: "listen", Err: errNumericPort}
 	}
 
 	var addr netip.AddrPort
 	if host != "" && !(host == "0.0.0.0" || host == "[::]") {
 		ip, err := netip.ParseAddr(host)
 		if err != nil {
-			return nil, &net.OpError{Op: "listen", Err: err}
+			return nil, &stdnet.OpError{Op: "listen", Err: err}
 		}
 
 		if ip.Is4() && !acceptV4 {
-			return nil, &net.OpError{Op: "listen", Err: net.UnknownNetworkError("tcp4")}
+			return nil, &stdnet.OpError{Op: "listen", Err: stdnet.UnknownNetworkError("tcp4")}
 		}
 
 		if ip.Is6() && !acceptV6 {
-			return nil, &net.OpError{Op: "listen", Err: net.UnknownNetworkError("tcp6")}
+			return nil, &stdnet.OpError{Op: "listen", Err: stdnet.UnknownNetworkError("tcp6")}
 		}
 
 		addr = netip.AddrPortFrom(ip, uint16(port))
 	} else {
-		for _, localAddr := range n.localAddrs {
+		for _, localAddr := range net.localAddrs {
 			if localAddr.Is6() && acceptV6 {
 				addr = netip.AddrPortFrom(localAddr, uint16(port))
 				break
@@ -459,54 +499,51 @@ func (n *Network) Listen(network, address string) (net.Listener, error) {
 	}
 
 	fa, pn := convertToFullAddr(addr)
-	return gonet.ListenTCP(n.stack, fa, pn)
+	return gonet.ListenTCP(net.stack, fa, pn)
 }
 
-// ListenPacket creates a network packet listener (only UDP is currently supported).
-// Caveat: The SetDeadline, SetReadDeadline, or SetWriteDeadline f8unctions on the returned
-// PacketConn may not work as expected (due to limitations in the gVisor network stack).
-func (n *Network) ListenPacket(network, address string) (net.PacketConn, error) {
+func (net *NoisySocketsNetwork) ListenPacket(network, address string) (stdnet.PacketConn, error) {
 	acceptV4, acceptV6 := true, true
 	matches := protoSplitter.FindStringSubmatch(network)
 	if matches == nil {
-		return nil, &net.OpError{Op: "listen", Err: net.UnknownNetworkError(network)}
+		return nil, &stdnet.OpError{Op: "listen", Err: stdnet.UnknownNetworkError(network)}
 	} else if len(matches[2]) != 0 {
 		acceptV4 = matches[2][0] == '4'
 		acceptV6 = !acceptV4
 	}
 
 	if matches[1] != "udp" {
-		return nil, &net.OpError{Op: "listen", Err: net.UnknownNetworkError(network)}
+		return nil, &stdnet.OpError{Op: "listen", Err: stdnet.UnknownNetworkError(network)}
 	}
 
-	host, sport, err := net.SplitHostPort(address)
+	host, sport, err := stdnet.SplitHostPort(address)
 	if err != nil {
-		return nil, &net.OpError{Op: "listen", Err: err}
+		return nil, &stdnet.OpError{Op: "listen", Err: err}
 	}
 
 	port, err := strconv.Atoi(sport)
 	if err != nil || port < 0 || port > 65535 {
-		return nil, &net.OpError{Op: "listen", Err: errNumericPort}
+		return nil, &stdnet.OpError{Op: "listen", Err: errNumericPort}
 	}
 
 	var addr netip.AddrPort
 	if host != "" && !(host == "0.0.0.0" || host == "[::]") {
 		ip, err := netip.ParseAddr(host)
 		if err != nil {
-			return nil, &net.OpError{Op: "listen", Err: err}
+			return nil, &stdnet.OpError{Op: "listen", Err: err}
 		}
 
 		if ip.Is4() && !acceptV4 {
-			return nil, &net.OpError{Op: "listen", Err: net.UnknownNetworkError("udp4")}
+			return nil, &stdnet.OpError{Op: "listen", Err: stdnet.UnknownNetworkError("udp4")}
 		}
 
 		if ip.Is6() && !acceptV6 {
-			return nil, &net.OpError{Op: "listen", Err: net.UnknownNetworkError("udp6")}
+			return nil, &stdnet.OpError{Op: "listen", Err: stdnet.UnknownNetworkError("udp6")}
 		}
 
 		addr = netip.AddrPortFrom(ip, uint16(port))
 	} else {
-		for _, localAddr := range n.localAddrs {
+		for _, localAddr := range net.localAddrs {
 			if localAddr.Is6() && acceptV6 {
 				addr = netip.AddrPortFrom(localAddr, uint16(port))
 				break
@@ -519,27 +556,7 @@ func (n *Network) ListenPacket(network, address string) (net.PacketConn, error) 
 	}
 
 	fa, pn := convertToFullAddr(addr)
-	return gonet.DialUDP(n.stack, &fa, nil, pn)
-}
-
-// LookupPeerByAddress returns the public key of a peer by its address.
-func (n *Network) LookupPeerByAddress(addr netip.Addr) (transport.NoisePublicKey, bool) {
-	return n.pd.LookupPeerByAddress(addr)
-}
-
-// GetPeerEndpoint returns the public address/endpoint of a peer (if known).
-func (n *Network) GetPeerEndpoint(publicKey transport.NoisePublicKey) (netip.AddrPort, error) {
-	peer := n.transport.LookupPeer(publicKey)
-	if peer == nil {
-		return netip.AddrPort{}, fmt.Errorf("unknown peer")
-	}
-
-	endpoint := peer.GetEndpoint()
-	if endpoint == nil {
-		return netip.AddrPort{}, fmt.Errorf("no known endpoint for peer")
-	}
-
-	return netip.ParseAddrPort(endpoint.DstToString())
+	return gonet.DialUDP(net.stack, &fa, nil, pn)
 }
 
 func convertToFullAddr(endpoint netip.AddrPort) (tcpip.FullAddress, tcpip.NetworkProtocolNumber) {

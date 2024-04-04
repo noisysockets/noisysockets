@@ -10,6 +10,7 @@
 package config_test
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,7 +20,13 @@ import (
 )
 
 func TestFromYAML(t *testing.T) {
-	conf, err := config.FromYAML("testdata/config.yaml")
+	configFile, err := os.Open("testdata/config.yaml")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, configFile.Close())
+	})
+
+	conf, err := config.FromYAML(configFile)
 	require.NoError(t, err)
 
 	require.Equal(t, "Config", conf.GetKind())
@@ -31,19 +38,30 @@ func TestFromYAML(t *testing.T) {
 }
 
 func TestSaveToYAML(t *testing.T) {
-	conf, err := config.FromYAML("testdata/config.yaml")
+	configFile, err := os.Open("testdata/config.yaml")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, configFile.Close())
+	})
+
+	conf, err := config.FromYAML(configFile)
 	require.NoError(t, err)
 
-	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	savedConfigPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	w, err := os.Create(configPath)
+	savedConfigFile, err := os.OpenFile(savedConfigPath, os.O_CREATE|os.O_RDWR, 0o400)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, savedConfigFile.Close())
+	})
+
+	err = config.SaveToYAML(savedConfigFile, conf)
 	require.NoError(t, err)
 
-	err = config.SaveToYAML(w, conf)
+	_, err = savedConfigFile.Seek(0, io.SeekStart)
 	require.NoError(t, err)
-	require.NoError(t, w.Close())
 
-	conf2, err := config.FromYAML(configPath)
+	conf2, err := config.FromYAML(savedConfigFile)
 	require.NoError(t, err)
 
 	require.Equal(t, conf, conf2)

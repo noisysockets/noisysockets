@@ -76,7 +76,13 @@ func main() {
 				}, sharedFlags...),
 				Before: before,
 				Action: func(c *cli.Context) error {
-					conf, err := config.FromYAML(c.String("config"))
+					configFile, err := os.Open(c.String("config"))
+					if err != nil {
+						return fmt.Errorf("failed to open config file: %w", err)
+					}
+					defer configFile.Close()
+
+					conf, err := config.FromYAML(configFile)
 					if err != nil {
 						return fmt.Errorf("failed to read config: %w", err)
 					}
@@ -160,7 +166,13 @@ func main() {
 				}, sharedFlags...),
 				Before: before,
 				Action: func(c *cli.Context) error {
-					conf, err := config.FromYAML(c.String("config"))
+					configFile, err := os.Open(c.String("config"))
+					if err != nil {
+						return fmt.Errorf("failed to open config file: %w", err)
+					}
+					defer configFile.Close()
+
+					conf, err := config.FromYAML(configFile)
 					if err != nil {
 						return fmt.Errorf("failed to read config: %w", err)
 					}

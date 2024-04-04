@@ -206,7 +206,7 @@ func (transport *Transport) upLocked() error {
 	transport.peers.RLock()
 	for _, peer := range transport.peers.keyMap {
 		peer.Start()
-		if peer.persistentKeepaliveInterval.Load() > 0 {
+		if peer.keepAliveInterval.Load() > 0 {
 			if err := peer.SendKeepalive(); err != nil {
 				transport.log.Error("Failed to send keepalive", "peer", peer, "error", err)
 			}
