@@ -574,6 +574,21 @@ func (net *NoisySocketsNetwork) ListenPacket(network, address string) (stdnet.Pa
 	return &packetConn{PacketConn: pc, pd: net.pd}, nil
 }
 
+// GetPeerEndpoint returns the public address/endpoint of a peer (if known).
+func (net *NoisySocketsNetwork) GetPeerEndpoint(pk types.NoisePublicKey) (netip.AddrPort, error) {
+	peer := net.transport.LookupPeer(pk)
+	if peer == nil {
+		return netip.AddrPort{}, fmt.Errorf("unknown peer")
+	}
+
+	endpoint := peer.GetEndpoint()
+	if endpoint == nil {
+		return netip.AddrPort{}, fmt.Errorf("no known endpoint for peer")
+	}
+
+	return netip.ParseAddrPort(endpoint.DstToString())
+}
+
 func convertToFullAddr(endpoint netip.AddrPort) (tcpip.FullAddress, tcpip.NetworkProtocolNumber) {
 	var protoNumber tcpip.NetworkProtocolNumber
 	if endpoint.Addr().Is4() {
