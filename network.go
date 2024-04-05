@@ -63,11 +63,13 @@ import (
 )
 
 var (
-	errCanceled          = errors.New("operation was canceled")
-	errTimeout           = errors.New("i/o timeout")
-	errNumericPort       = errors.New("port must be numeric")
-	errNoSuitableAddress = errors.New("no suitable address found")
-	errMissingAddress    = errors.New("missing address")
+	ErrCanceled          = errors.New("operation was canceled")
+	ErrTimeout           = errors.New("i/o timeout")
+	ErrNumericPort       = errors.New("port must be numeric")
+	ErrNoSuitableAddress = errors.New("no suitable address found")
+	ErrMissingAddress    = errors.New("missing address")
+	ErrNoEndpoint        = errors.New("no known endpoint for peer")
+	ErrUnknownPeer       = errors.New("unknown peer")
 )
 
 var protoSplitter = regexp.MustCompile(`^(tcp|udp)(4|6)?$`)
@@ -378,7 +380,7 @@ func (net *NoisySocketsNetwork) DialContext(ctx context.Context, network, addres
 
 	port, err := strconv.Atoi(sport)
 	if err != nil || port < 0 || port > 65535 {
-		return nil, &stdnet.OpError{Op: "dial", Err: errNumericPort}
+		return nil, &stdnet.OpError{Op: "dial", Err: ErrNumericPort}
 	}
 
 	allAddr, err := net.LookupHost(host)
@@ -394,7 +396,7 @@ func (net *NoisySocketsNetwork) DialContext(ctx context.Context, network, addres
 		}
 	}
 	if len(addrs) == 0 && len(allAddr) != 0 {
-		return nil, &stdnet.OpError{Op: "dial", Err: errNoSuitableAddress}
+		return nil, &stdnet.OpError{Op: "dial", Err: ErrNoSuitableAddress}
 	}
 
 	var firstErr error
@@ -403,9 +405,9 @@ func (net *NoisySocketsNetwork) DialContext(ctx context.Context, network, addres
 		case <-ctx.Done():
 			err := ctx.Err()
 			if err == context.Canceled {
-				err = errCanceled
+				err = ErrCanceled
 			} else if err == context.DeadlineExceeded {
-				err = errTimeout
+				err = ErrTimeout
 			}
 			return nil, &stdnet.OpError{Op: "dial", Err: err}
 		default:
@@ -444,7 +446,7 @@ func (net *NoisySocketsNetwork) DialContext(ctx context.Context, network, addres
 		}
 	}
 	if firstErr == nil {
-		firstErr = &stdnet.OpError{Op: "dial", Err: errMissingAddress}
+		firstErr = &stdnet.OpError{Op: "dial", Err: ErrMissingAddress}
 	}
 
 	return nil, firstErr
@@ -471,7 +473,7 @@ func (net *NoisySocketsNetwork) Listen(network, address string) (stdnet.Listener
 
 	port, err := strconv.Atoi(sport)
 	if err != nil || port < 0 || port > 65535 {
-		return nil, &stdnet.OpError{Op: "listen", Err: errNumericPort}
+		return nil, &stdnet.OpError{Op: "listen", Err: ErrNumericPort}
 	}
 
 	var addr netip.AddrPort
@@ -533,7 +535,7 @@ func (net *NoisySocketsNetwork) ListenPacket(network, address string) (stdnet.Pa
 
 	port, err := strconv.Atoi(sport)
 	if err != nil || port < 0 || port > 65535 {
-		return nil, &stdnet.OpError{Op: "listen", Err: errNumericPort}
+		return nil, &stdnet.OpError{Op: "listen", Err: ErrNumericPort}
 	}
 
 	var addr netip.AddrPort
@@ -583,12 +585,12 @@ func (net *NoisySocketsNetwork) KnownPeers() []types.NoisePublicKey {
 func (net *NoisySocketsNetwork) GetPeerEndpoint(pk types.NoisePublicKey) (netip.AddrPort, error) {
 	peer := net.transport.LookupPeer(pk)
 	if peer == nil {
-		return netip.AddrPort{}, fmt.Errorf("unknown peer")
+		return netip.AddrPort{}, ErrUnknownPeer
 	}
 
 	endpoint := peer.GetEndpoint()
 	if endpoint == nil {
-		return netip.AddrPort{}, fmt.Errorf("no known endpoint for peer")
+		return netip.AddrPort{}, ErrNoEndpoint
 	}
 
 	return netip.ParseAddrPort(endpoint.DstToString())
@@ -598,7 +600,7 @@ func (net *NoisySocketsNetwork) GetPeerEndpoint(pk types.NoisePublicKey) (netip.
 func (net *NoisySocketsNetwork) SetPeerEndpoint(pk types.NoisePublicKey, endpoint netip.AddrPort) error {
 	peer := net.transport.LookupPeer(pk)
 	if peer == nil {
-		return fmt.Errorf("unknown peer")
+		return ErrUnknownPeer
 	}
 
 	peer.SetEndpoint(&conn.StdNetEndpoint{AddrPort: endpoint})
@@ -627,7 +629,7 @@ func partialDeadline(now, deadline time.Time, addrsRemaining int) (time.Time, er
 
 	timeRemaining := deadline.Sub(now)
 	if timeRemaining <= 0 {
-		return time.Time{}, errTimeout
+		return time.Time{}, ErrTimeout
 	}
 
 	timeout := timeRemaining / time.Duration(addrsRemaining)
