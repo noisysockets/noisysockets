@@ -41,6 +41,7 @@ import (
 
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/ratelimiter"
+	"github.com/noisysockets/noisysockets/types"
 )
 
 type Transport struct {
@@ -72,13 +73,13 @@ type Transport struct {
 
 	staticIdentity struct {
 		sync.RWMutex
-		privateKey NoisePrivateKey
-		publicKey  NoisePublicKey
+		privateKey types.NoisePrivateKey
+		publicKey  types.NoisePublicKey
 	}
 
 	peers struct {
 		sync.RWMutex // protects keyMap
-		keyMap       map[NoisePublicKey]*Peer
+		keyMap       map[types.NoisePublicKey]*Peer
 	}
 
 	rate struct {
@@ -156,7 +157,7 @@ func (transport *Transport) isUp() bool {
 }
 
 // Must hold transport.peers.Lock()
-func removePeerLocked(transport *Transport, peer *Peer, key NoisePublicKey) {
+func removePeerLocked(transport *Transport, peer *Peer, key types.NoisePublicKey) {
 	// stop routing and processing of packets
 	peer.Stop()
 
@@ -252,7 +253,7 @@ func (transport *Transport) IsUnderLoad() bool {
 	return transport.rate.underLoadUntil.Load() > now.UnixNano()
 }
 
-func (transport *Transport) SetPrivateKey(sk NoisePrivateKey) {
+func (transport *Transport) SetPrivateKey(sk types.NoisePrivateKey) {
 	// lock required resources
 
 	transport.staticIdentity.Lock()
@@ -293,7 +294,7 @@ func (transport *Transport) SetPrivateKey(sk NoisePrivateKey) {
 	expiredPeers := make([]*Peer, 0, len(transport.peers.keyMap))
 	for _, peer := range transport.peers.keyMap {
 		handshake := &peer.handshake
-		handshake.precomputedStaticStatic, _ = transport.staticIdentity.privateKey.sharedSecret(handshake.remoteStatic)
+		handshake.precomputedStaticStatic, _ = sharedSecret(transport.staticIdentity.privateKey, handshake.remoteStatic)
 		expiredPeers = append(expiredPeers, peer)
 	}
 
@@ -312,7 +313,7 @@ func NewTransport(sourceSink SourceSink, bind conn.Bind, logger *slog.Logger) *T
 	t.log = logger
 	t.net.bind = bind
 	t.sourceSink = sourceSink
-	t.peers.keyMap = make(map[NoisePublicKey]*Peer)
+	t.peers.keyMap = make(map[types.NoisePublicKey]*Peer)
 	t.rate.limiter.Init()
 	t.indexTable.Init()
 
@@ -355,21 +356,21 @@ func (transport *Transport) BatchSize() int {
 	return size
 }
 
-func (transport *Transport) LookupPeer(pk NoisePublicKey) *Peer {
+func (transport *Transport) LookupPeer(pk types.NoisePublicKey) *Peer {
 	transport.peers.RLock()
 	defer transport.peers.RUnlock()
 
 	return transport.peers.keyMap[pk]
 }
 
-func (transport *Transport) RemovePeer(key NoisePublicKey) {
+func (transport *Transport) RemovePeer(pk types.NoisePublicKey) {
 	transport.peers.Lock()
 	defer transport.peers.Unlock()
 	// stop peer and remove from routing
 
-	peer, ok := transport.peers.keyMap[key]
+	peer, ok := transport.peers.keyMap[pk]
 	if ok {
-		removePeerLocked(transport, peer, key)
+		removePeerLocked(transport, peer, pk)
 	}
 }
 
@@ -381,7 +382,7 @@ func (transport *Transport) RemoveAllPeers() {
 		removePeerLocked(transport, peer, key)
 	}
 
-	transport.peers.keyMap = make(map[NoisePublicKey]*Peer)
+	transport.peers.keyMap = make(map[types.NoisePublicKey]*Peer)
 }
 
 func (transport *Transport) Close() error {

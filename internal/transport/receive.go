@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/noisysockets/noisysockets/internal/conn"
+	"github.com/noisysockets/noisysockets/types"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
@@ -470,7 +471,7 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 
 	bufs := make([][]byte, 0, maxBatchSize)
 
-	peers := make([]NoisePublicKey, 0, maxBatchSize)
+	peers := make([]types.NoisePublicKey, 0, maxBatchSize)
 	for i := 0; i < maxBatchSize; i++ {
 		peers = append(peers, peer.pk)
 	}

@@ -40,6 +40,7 @@ import (
 
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/transport"
+	"github.com/noisysockets/noisysockets/types"
 	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/link/channel"
@@ -61,10 +62,10 @@ type sourceSink struct {
 	ep             *channel.Endpoint
 	notifyHandle   *channel.NotificationHandle
 	incoming       chan *stack.PacketBuffer
-	defaultGateway *transport.NoisePublicKey
+	defaultGateway *types.NoisePublicKey
 }
 
-func newSourceSink(logger *slog.Logger, pd *peerDirectory, s *stack.Stack, defaultGateway *transport.NoisePublicKey) (*sourceSink, error) {
+func newSourceSink(logger *slog.Logger, pd *peerDirectory, s *stack.Stack, defaultGateway *types.NoisePublicKey) (*sourceSink, error) {
 	ss := &sourceSink{
 		logger:         logger,
 		pd:             pd,
@@ -93,7 +94,7 @@ func (ss *sourceSink) Close() error {
 	return nil
 }
 
-func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []transport.NoisePublicKey, offset int) (int, error) {
+func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []types.NoisePublicKey, offset int) (int, error) {
 	packetFn := func(idx int, pkt *stack.PacketBuffer) error {
 		defer pkt.DecRef()
 
@@ -173,7 +174,7 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []transport.
 	return count, nil
 }
 
-func (ss *sourceSink) Write(bufs [][]byte, sources []transport.NoisePublicKey, offset int) (int, error) {
+func (ss *sourceSink) Write(bufs [][]byte, sources []types.NoisePublicKey, offset int) (int, error) {
 	for i, buf := range bufs {
 		if len(buf) <= offset {
 			continue

@@ -29,7 +29,7 @@
  * SOFTWARE.
  */
 
-package transport
+package types
 
 import (
 	"testing"
@@ -38,27 +38,27 @@ import (
 )
 
 func TestNoisePrivateKeyEncoding(t *testing.T) {
-	key, err := NewPrivateKey()
+	sk1, err := NewPrivateKey()
 	require.NoError(t, err)
 
-	encoded := key.String()
+	encoded := sk1.String()
 
-	var decoded NoisePrivateKey
-	require.NoError(t, decoded.FromString(encoded))
+	var sk2 NoisePrivateKey
+	require.NoError(t, sk2.FromString(encoded))
 
-	require.Equal(t, key, decoded)
+	require.Equal(t, sk1, sk2)
 }
 
 func TestNoisePublicKeyEncoding(t *testing.T) {
-	key, err := NewPrivateKey()
+	sk, err := NewPrivateKey()
 	require.NoError(t, err)
 
-	pk := key.PublicKey()
+	pk1 := sk.PublicKey()
 
-	encoded := pk.String()
+	encoded := pk1.String()
 
-	var decoded NoisePublicKey
-	require.NoError(t, decoded.FromString(encoded))
+	var pk2 NoisePublicKey
+	require.NoError(t, pk2.FromString(encoded))
 
-	require.Equal(t, pk, decoded)
+	require.Equal(t, pk1, pk2)
 }

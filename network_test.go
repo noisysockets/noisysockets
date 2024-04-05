@@ -27,7 +27,7 @@ import (
 	"github.com/noisysockets/noisysockets"
 	"github.com/noisysockets/noisysockets/config"
 	"github.com/noisysockets/noisysockets/config/v1alpha1"
-	"github.com/noisysockets/noisysockets/internal/transport"
+	"github.com/noisysockets/noisysockets/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -38,10 +38,10 @@ import (
 func TestNetwork(t *testing.T) {
 	logger := slogt.New(t)
 
-	serverPrivateKey, err := transport.NewPrivateKey()
+	serverPrivateKey, err := types.NewPrivateKey()
 	require.NoError(t, err)
 
-	clientPrivateKey, err := transport.NewPrivateKey()
+	clientPrivateKey, err := types.NewPrivateKey()
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())

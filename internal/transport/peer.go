@@ -40,10 +40,11 @@ import (
 	"time"
 
 	"github.com/noisysockets/noisysockets/internal/conn"
+	"github.com/noisysockets/noisysockets/types"
 )
 
 type Peer struct {
-	pk                NoisePublicKey
+	pk                types.NoisePublicKey
 	isRunning         atomic.Bool
 	keypairs          Keypairs
 	handshake         Handshake
@@ -83,7 +84,7 @@ type Peer struct {
 	keepAliveInterval atomic.Uint32
 }
 
-func (transport *Transport) NewPeer(pk NoisePublicKey) (*Peer, error) {
+func (transport *Transport) NewPeer(pk types.NoisePublicKey) (*Peer, error) {
 	if transport.isClosed() {
 		return nil, errors.New("transport closed")
 	}
@@ -119,7 +120,7 @@ func (transport *Transport) NewPeer(pk NoisePublicKey) (*Peer, error) {
 	// pre-compute DH
 	handshake := &peer.handshake
 	handshake.mutex.Lock()
-	handshake.precomputedStaticStatic, _ = transport.staticIdentity.privateKey.sharedSecret(pk)
+	handshake.precomputedStaticStatic, _ = sharedSecret(transport.staticIdentity.privateKey, pk)
 	handshake.remoteStatic = pk
 	handshake.mutex.Unlock()
 

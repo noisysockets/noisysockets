@@ -33,6 +33,8 @@ package transport
 
 import (
 	"testing"
+
+	"github.com/noisysockets/noisysockets/types"
 )
 
 func TestCookieMAC1(t *testing.T) {
@@ -43,7 +45,7 @@ func TestCookieMAC1(t *testing.T) {
 		checker   CookieChecker
 	)
 
-	sk, err := NewPrivateKey()
+	sk, err := types.NewPrivateKey()
 	if err != nil {
 		t.Fatal(err)
 	}

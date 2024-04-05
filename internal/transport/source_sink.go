@@ -33,6 +33,8 @@ package transport
 
 import (
 	"io"
+
+	"github.com/noisysockets/noisysockets/types"
 )
 
 type SourceSink interface {
@@ -43,13 +45,13 @@ type SourceSink interface {
 	// packet lengths within the sizes slice. len(sizes) must be >= len(bufs).
 	// A nonzero offset can be used to instruct the Transport on where to begin
 	// reading into each element of the bufs slice.
-	Read(bufs [][]byte, sizes []int, destinations []NoisePublicKey, offset int) (int, error)
+	Read(bufs [][]byte, sizes []int, destinations []types.NoisePublicKey, offset int) (int, error)
 
 	// Write one or more packets to the transport (without any additional headers).
 	// On a successful write it returns the number of packets written. A nonzero
 	// offset can be used to instruct the Transport on where to begin writing from
 	// each packet contained within the bufs slice.
-	Write(bufs [][]byte, sources []NoisePublicKey, offset int) (int, error)
+	Write(bufs [][]byte, sources []types.NoisePublicKey, offset int) (int, error)
 
 	// BatchSize returns the preferred/max number of packets that can be read or
 	// written in a single read/write call. BatchSize must not change over the

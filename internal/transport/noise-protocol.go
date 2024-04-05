@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/noisysockets/noisysockets/internal/tai64n"
+	"github.com/noisysockets/noisysockets/types"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/chacha20poly1305"
 
@@ -111,8 +112,8 @@ const (
 type MessageInitiation struct {
 	Type      uint32
 	Sender    uint32
-	Ephemeral NoisePublicKey
-	Static    [NoisePublicKeySize + poly1305.TagSize]byte
+	Ephemeral types.NoisePublicKey
+	Static    [types.NoisePublicKeySize + poly1305.TagSize]byte
 	Timestamp [tai64n.TimestampSize + poly1305.TagSize]byte
 	MAC1      [blake2s.Size128]byte
 	MAC2      [blake2s.Size128]byte
@@ -122,7 +123,7 @@ type MessageResponse struct {
 	Type      uint32
 	Sender    uint32
 	Receiver  uint32
-	Ephemeral NoisePublicKey
+	Ephemeral types.NoisePublicKey
 	Empty     [poly1305.TagSize]byte
 	MAC1      [blake2s.Size128]byte
 	MAC2      [blake2s.Size128]byte
@@ -145,15 +146,15 @@ type MessageCookieReply struct {
 type Handshake struct {
 	state                     handshakeState
 	mutex                     sync.RWMutex
-	hash                      [blake2s.Size]byte       // hash value
-	chainKey                  [blake2s.Size]byte       // chain key
-	presharedKey              NoisePresharedKey        // psk
-	localEphemeral            NoisePrivateKey          // ephemeral secret key
-	localIndex                uint32                   // used to clear hash-table
-	remoteIndex               uint32                   // index for sending
-	remoteStatic              NoisePublicKey           // long term key
-	remoteEphemeral           NoisePublicKey           // ephemeral public key
-	precomputedStaticStatic   [NoisePublicKeySize]byte // precomputed shared secret
+	hash                      [blake2s.Size]byte             // hash value
+	chainKey                  [blake2s.Size]byte             // chain key
+	presharedKey              types.NoisePresharedKey        // psk
+	localEphemeral            types.NoisePrivateKey          // ephemeral secret key
+	localIndex                uint32                         // used to clear hash-table
+	remoteIndex               uint32                         // index for sending
+	remoteStatic              types.NoisePublicKey           // long term key
+	remoteEphemeral           types.NoisePublicKey           // ephemeral public key
+	precomputedStaticStatic   [types.NoisePublicKeySize]byte // precomputed shared secret
 	lastTimestamp             tai64n.Timestamp
 	lastInitiationConsumption time.Time
 	lastSentHandshake         time.Time
@@ -213,7 +214,7 @@ func (transport *Transport) CreateMessageInitiation(peer *Peer) (*MessageInitiat
 	var err error
 	handshake.hash = InitialHash
 	handshake.chainKey = InitialChainKey
-	handshake.localEphemeral, err = NewPrivateKey()
+	handshake.localEphemeral, err = types.NewPrivateKey()
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +230,7 @@ func (transport *Transport) CreateMessageInitiation(peer *Peer) (*MessageInitiat
 	handshake.mixHash(msg.Ephemeral[:])
 
 	// encrypt static key
-	ss, err := handshake.localEphemeral.sharedSecret(handshake.remoteStatic)
+	ss, err := sharedSecret(handshake.localEphemeral, handshake.remoteStatic)
 	if err != nil {
 		return nil, err
 	}
@@ -289,9 +290,9 @@ func (transport *Transport) ConsumeMessageInitiation(msg *MessageInitiation) *Pe
 	mixKey(&chainKey, &InitialChainKey, msg.Ephemeral[:])
 
 	// decrypt static key
-	var peerPK NoisePublicKey
+	var peerPK types.NoisePublicKey
 	var key [chacha20poly1305.KeySize]byte
-	ss, err := transport.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
+	ss, err := sharedSecret(transport.staticIdentity.privateKey, msg.Ephemeral)
 	if err != nil {
 		return nil
 	}
@@ -400,7 +401,7 @@ func (transport *Transport) CreateMessageResponse(peer *Peer) (*MessageResponse,
 
 	// create ephemeral key
 
-	handshake.localEphemeral, err = NewPrivateKey()
+	handshake.localEphemeral, err = types.NewPrivateKey()
 	if err != nil {
 		return nil, err
 	}
@@ -408,12 +409,12 @@ func (transport *Transport) CreateMessageResponse(peer *Peer) (*MessageResponse,
 	handshake.mixHash(msg.Ephemeral[:])
 	handshake.mixKey(msg.Ephemeral[:])
 
-	ss, err := handshake.localEphemeral.sharedSecret(handshake.remoteEphemeral)
+	ss, err := sharedSecret(handshake.localEphemeral, handshake.remoteEphemeral)
 	if err != nil {
 		return nil, err
 	}
 	handshake.mixKey(ss[:])
-	ss, err = handshake.localEphemeral.sharedSecret(handshake.remoteStatic)
+	ss, err = sharedSecret(handshake.localEphemeral, handshake.remoteStatic)
 	if err != nil {
 		return nil, err
 	}
@@ -484,7 +485,7 @@ func (transport *Transport) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 		mixHash(&hash, &handshake.hash, msg.Ephemeral[:])
 		mixKey(&chainKey, &handshake.chainKey, msg.Ephemeral[:])
 
-		ss, err := handshake.localEphemeral.sharedSecret(msg.Ephemeral)
+		ss, err := sharedSecret(handshake.localEphemeral, msg.Ephemeral)
 		if err != nil {
 			transport.log.Debug("ConsumeMessageResponse: failed to compute shared secret", "peer", lookup.peer)
 			return false
@@ -492,7 +493,7 @@ func (transport *Transport) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 		mixKey(&chainKey, &chainKey, ss[:])
 		setZero(ss[:])
 
-		ss, err = transport.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
+		ss, err = sharedSecret(transport.staticIdentity.privateKey, msg.Ephemeral)
 		if err != nil {
 			transport.log.Debug("ConsumeMessageResponse: failed to compute shared secret", "peer", lookup.peer)
 			return false

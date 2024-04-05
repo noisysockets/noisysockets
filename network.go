@@ -50,6 +50,7 @@ import (
 	"github.com/noisysockets/noisysockets/internal/dns/addrselect"
 	"github.com/noisysockets/noisysockets/internal/transport"
 	"github.com/noisysockets/noisysockets/network"
+	"github.com/noisysockets/noisysockets/types"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -84,7 +85,7 @@ type NoisySocketsNetwork struct {
 // The returned network is a userspace WireGuard peer that exposes
 // Dial() and Listen() methods compatible with the net package.
 func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, error) {
-	var privateKey transport.NoisePrivateKey
+	var privateKey types.NoisePrivateKey
 	if err := privateKey.FromString(conf.PrivateKey); err != nil {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
@@ -101,13 +102,15 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 	pd := newPeerDirectory()
 
 	// Add the local node to the peer directory.
-	pd.AddPeer(conf.Name, privateKey.PublicKey(), localAddrs)
+	if err := pd.AddPeer(conf.Name, privateKey.PublicKey(), localAddrs); err != nil {
+		return nil, fmt.Errorf("could not add local peer to directory: %w", err)
+	}
 
-	var defaultGateway *transport.NoisePublicKey
+	var defaultGateway *types.NoisePublicKey
 	var defaultGatewayAddrs []netip.Addr
 	for _, peerConf := range conf.Peers {
 		if peerConf.DefaultGateway {
-			defaultGateway = &transport.NoisePublicKey{}
+			defaultGateway = new(types.NoisePublicKey)
 			if err := defaultGateway.FromString(peerConf.PublicKey); err != nil {
 				return nil, fmt.Errorf("could not parse default gateway public key: %w", err)
 			}
@@ -225,7 +228,7 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 	}
 
 	for _, peerConf := range conf.Peers {
-		var peerPublicKey transport.NoisePublicKey
+		var peerPublicKey types.NoisePublicKey
 		if err := peerPublicKey.FromString(peerConf.PublicKey); err != nil {
 			return nil, fmt.Errorf("failed to parse peer public key: %w", err)
 		}
@@ -239,7 +242,9 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 			peerAddrs = append(peerAddrs, addr)
 		}
 
-		pd.AddPeer(peerConf.Name, peerPublicKey, peerAddrs)
+		if err := pd.AddPeer(peerConf.Name, peerPublicKey, peerAddrs); err != nil {
+			return nil, fmt.Errorf("failed to add peer %s to directory: %w", peerConf.Name, err)
+		}
 
 		peer, err := t.NewPeer(peerPublicKey)
 		if err != nil {
@@ -499,7 +504,12 @@ func (net *NoisySocketsNetwork) Listen(network, address string) (stdnet.Listener
 	}
 
 	fa, pn := convertToFullAddr(addr)
-	return gonet.ListenTCP(net.stack, fa, pn)
+	lis, err := gonet.ListenTCP(net.stack, fa, pn)
+	if err != nil {
+		return nil, err
+	}
+
+	return &listener{Listener: lis, pd: net.pd}, nil
 }
 
 func (net *NoisySocketsNetwork) ListenPacket(network, address string) (stdnet.PacketConn, error) {
@@ -556,7 +566,12 @@ func (net *NoisySocketsNetwork) ListenPacket(network, address string) (stdnet.Pa
 	}
 
 	fa, pn := convertToFullAddr(addr)
-	return gonet.DialUDP(net.stack, &fa, nil, pn)
+	pc, err := gonet.DialUDP(net.stack, &fa, nil, pn)
+	if err != nil {
+		return nil, err
+	}
+
+	return &packetConn{PacketConn: pc, pd: net.pd}, nil
 }
 
 func convertToFullAddr(endpoint netip.AddrPort) (tcpip.FullAddress, tcpip.NetworkProtocolNumber) {

@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/noisysockets/noisysockets/internal/conn"
+	"github.com/noisysockets/noisysockets/types"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
@@ -260,7 +261,7 @@ func (transport *Transport) RoutineReadFromSourceSink() {
 		readErr     error
 		elems       = make([]*QueueOutboundElement, batchSize)
 		bufs        = make([][]byte, batchSize)
-		peers       = make([]NoisePublicKey, batchSize)
+		peers       = make([]types.NoisePublicKey, batchSize)
 		elemsByPeer = make(map[*Peer]*QueueOutboundElementsContainer, batchSize)
 		count       int
 		sizes       = make([]int, batchSize)

@@ -29,11 +29,14 @@
  * SOFTWARE.
  */
 
-package transport
+package types
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+
+	"golang.org/x/crypto/curve25519"
 )
 
 const (
@@ -49,46 +52,64 @@ type (
 	NoiseNonce        uint64 // padded to 12-bytes
 )
 
-func (key *NoisePrivateKey) FromString(src string) error {
+func NewPrivateKey() (sk NoisePrivateKey, err error) {
+	_, err = rand.Read(sk[:])
+	sk.clamp()
+	return
+}
+
+func (sk *NoisePrivateKey) FromString(src string) error {
 	b, err := base64.StdEncoding.DecodeString(src)
 	if err != nil {
 		return err
 	}
-	copy(key[:], b)
+	copy(sk[:], b)
 	return nil
 }
 
-func (key NoisePrivateKey) IsZero() bool {
+func (sk *NoisePrivateKey) clamp() {
+	sk[0] &= 248
+	sk[31] = (sk[31] & 127) | 64
+}
+
+func (sk NoisePrivateKey) PublicKey() (pk NoisePublicKey) {
+	apk := (*[NoisePublicKeySize]byte)(&pk)
+	ask := (*[NoisePrivateKeySize]byte)(&sk)
+	curve25519.ScalarBaseMult(apk, ask)
+	return
+}
+
+func (sk NoisePrivateKey) IsZero() bool {
 	var zero NoisePrivateKey
-	return key.Equals(zero)
+	return sk.Equals(zero)
 }
 
-func (key NoisePrivateKey) Equals(tar NoisePrivateKey) bool {
-	return subtle.ConstantTimeCompare(key[:], tar[:]) == 1
+func (sk NoisePrivateKey) Equals(tar NoisePrivateKey) bool {
+	return subtle.ConstantTimeCompare(sk[:], tar[:]) == 1
 }
 
-func (key NoisePrivateKey) String() string {
-	return base64.StdEncoding.EncodeToString(key[:])
+func (sk NoisePrivateKey) String() string {
+	return base64.StdEncoding.EncodeToString(sk[:])
 }
 
-func (key *NoisePublicKey) FromString(src string) error {
+func (pk *NoisePublicKey) FromString(src string) error {
 	b, err := base64.StdEncoding.DecodeString(src)
 	if err != nil {
 		return err
 	}
-	copy(key[:], b)
+	copy(pk[:], b)
 	return nil
 }
 
-func (key NoisePublicKey) IsZero() bool {
+func (pk NoisePublicKey) IsZero() bool {
 	var zero NoisePublicKey
-	return key.Equals(zero)
+	return pk.Equals(zero)
 }
 
-func (key NoisePublicKey) Equals(tar NoisePublicKey) bool {
-	return subtle.ConstantTimeCompare(key[:], tar[:]) == 1
+func (pk NoisePublicKey) Equals(tar NoisePublicKey) bool {
+	return subtle.ConstantTimeCompare(pk[:], tar[:]) == 1
 }
 
-func (key NoisePublicKey) String() string {
-	return base64.StdEncoding.EncodeToString(key[:])
+func (pk NoisePublicKey) String() string {
+	return base64.StdEncoding.EncodeToString(pk[:])
 }

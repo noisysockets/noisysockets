@@ -33,11 +33,11 @@ package transport
 
 import (
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/subtle"
 	"errors"
 	"hash"
 
+	"github.com/noisysockets/noisysockets/types"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/curve25519"
 )
@@ -103,29 +103,11 @@ func setZero(arr []byte) {
 	}
 }
 
-func (sk *NoisePrivateKey) clamp() {
-	sk[0] &= 248
-	sk[31] = (sk[31] & 127) | 64
-}
-
-func NewPrivateKey() (sk NoisePrivateKey, err error) {
-	_, err = rand.Read(sk[:])
-	sk.clamp()
-	return
-}
-
-func (sk *NoisePrivateKey) PublicKey() (pk NoisePublicKey) {
-	apk := (*[NoisePublicKeySize]byte)(&pk)
-	ask := (*[NoisePrivateKeySize]byte)(sk)
-	curve25519.ScalarBaseMult(apk, ask)
-	return
-}
-
 var errInvalidPublicKey = errors.New("invalid public key")
 
-func (sk *NoisePrivateKey) sharedSecret(pk NoisePublicKey) (ss [NoisePublicKeySize]byte, err error) {
-	apk := (*[NoisePublicKeySize]byte)(&pk)
-	ask := (*[NoisePrivateKeySize]byte)(sk)
+func sharedSecret(sk types.NoisePrivateKey, pk types.NoisePublicKey) (ss [types.NoisePublicKeySize]byte, err error) {
+	apk := (*[types.NoisePublicKeySize]byte)(&pk)
+	ask := (*[types.NoisePrivateKeySize]byte)(&sk)
 	result, err := curve25519.X25519(ask[:], apk[:])
 	if err != nil || isZero(result) {
 		return ss, errInvalidPublicKey

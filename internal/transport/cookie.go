@@ -37,6 +37,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/noisysockets/noisysockets/types"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -67,7 +68,7 @@ type CookieGenerator struct {
 	}
 }
 
-func (st *CookieChecker) Init(pk NoisePublicKey) {
+func (st *CookieChecker) Init(pk types.NoisePublicKey) {
 	st.Lock()
 	defer st.Unlock()
 
@@ -196,7 +197,7 @@ func (st *CookieChecker) CreateReply(
 	return reply, nil
 }
 
-func (st *CookieGenerator) Init(pk NoisePublicKey) {
+func (st *CookieGenerator) Init(pk types.NoisePublicKey) {
 	st.Lock()
 	defer st.Unlock()
 

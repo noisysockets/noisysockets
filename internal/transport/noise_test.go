@@ -40,21 +40,22 @@ import (
 
 	"github.com/neilotoole/slogt"
 	"github.com/noisysockets/noisysockets/internal/conn"
+	"github.com/noisysockets/noisysockets/types"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCurveWrappers(t *testing.T) {
-	sk1, err := NewPrivateKey()
+	sk1, err := types.NewPrivateKey()
 	assertNil(t, err)
 
-	sk2, err := NewPrivateKey()
+	sk2, err := types.NewPrivateKey()
 	assertNil(t, err)
 
 	pk1 := sk1.PublicKey()
 	pk2 := sk2.PublicKey()
 
-	ss1, err1 := sk1.sharedSecret(pk2)
-	ss2, err2 := sk2.sharedSecret(pk1)
+	ss1, err1 := sharedSecret(sk1, pk2)
+	ss2, err2 := sharedSecret(sk2, pk1)
 
 	if ss1 != ss2 || err1 != nil || err2 != nil {
 		t.Fatal("Failed to compute shared secet")
@@ -62,7 +63,7 @@ func TestCurveWrappers(t *testing.T) {
 }
 
 func randTransport(t *testing.T) *Transport {
-	sk, err := NewPrivateKey()
+	sk, err := types.NewPrivateKey()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +221,7 @@ func (ss *discardingSink) Close() error {
 	return nil
 }
 
-func (ss *discardingSink) Read(bufs [][]byte, sizes []int, destinations []NoisePublicKey, offset int) (int, error) {
+func (ss *discardingSink) Read(bufs [][]byte, sizes []int, destinations []types.NoisePublicKey, offset int) (int, error) {
 	if ss.closed {
 		return 0, net.ErrClosed
 	}
@@ -230,7 +231,7 @@ func (ss *discardingSink) Read(bufs [][]byte, sizes []int, destinations []NoiseP
 	return 0, nil
 }
 
-func (discardingSink) Write(bufs [][]byte, sources []NoisePublicKey, offset int) (int, error) {
+func (discardingSink) Write(bufs [][]byte, sources []types.NoisePublicKey, offset int) (int, error) {
 	return 0, nil
 }
 

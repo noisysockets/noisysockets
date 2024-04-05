@@ -10,33 +10,40 @@
 package noisysockets
 
 import (
+	"fmt"
 	"net/netip"
 
-	"github.com/noisysockets/noisysockets/internal/transport"
+	"github.com/noisysockets/noisysockets/types"
 )
 
 type peerDirectory struct {
-	peerNames       map[string]transport.NoisePublicKey
-	peerAddresses   map[transport.NoisePublicKey][]netip.Addr
-	fromPeerAddress map[netip.Addr]transport.NoisePublicKey
+	peerNames       map[string]types.NoisePublicKey
+	peerAddresses   map[types.NoisePublicKey][]netip.Addr
+	fromPeerAddress map[netip.Addr]types.NoisePublicKey
 }
 
 func newPeerDirectory() *peerDirectory {
 	return &peerDirectory{
-		peerNames:       make(map[string]transport.NoisePublicKey),
-		peerAddresses:   make(map[transport.NoisePublicKey][]netip.Addr),
-		fromPeerAddress: make(map[netip.Addr]transport.NoisePublicKey),
+		peerNames:       make(map[string]types.NoisePublicKey),
+		peerAddresses:   make(map[types.NoisePublicKey][]netip.Addr),
+		fromPeerAddress: make(map[netip.Addr]types.NoisePublicKey),
 	}
 }
 
-func (pd *peerDirectory) AddPeer(name string, publicKey transport.NoisePublicKey, addrs []netip.Addr) {
+func (pd *peerDirectory) AddPeer(name string, publicKey types.NoisePublicKey, addrs []netip.Addr) error {
 	if name != "" {
 		pd.peerNames[name] = publicKey
 	}
 	pd.peerAddresses[publicKey] = addrs
 	for _, addr := range addrs {
+		if _, ok := pd.fromPeerAddress[addr]; ok {
+			return fmt.Errorf("address %s already in use", addr)
+		}
+
 		pd.fromPeerAddress[addr] = publicKey
 	}
+
+	return nil
 }
 
 func (pd *peerDirectory) LookupPeerAddressesByName(name string) ([]netip.Addr, bool) {
@@ -48,7 +55,7 @@ func (pd *peerDirectory) LookupPeerAddressesByName(name string) ([]netip.Addr, b
 	return addrs, ok
 }
 
-func (pd *peerDirectory) LookupPeerByAddress(addr netip.Addr) (transport.NoisePublicKey, bool) {
+func (pd *peerDirectory) LookupPeerByAddress(addr netip.Addr) (types.NoisePublicKey, bool) {
 	publicKey, ok := pd.fromPeerAddress[addr]
 	return publicKey, ok
 }
