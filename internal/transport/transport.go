@@ -356,6 +356,17 @@ func (transport *Transport) BatchSize() int {
 	return size
 }
 
+func (transport *Transport) GetPeers() []types.NoisePublicKey {
+	transport.peers.RLock()
+	defer transport.peers.RUnlock()
+
+	keys := make([]types.NoisePublicKey, 0, len(transport.peers.keyMap))
+	for key := range transport.peers.keyMap {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
 func (transport *Transport) LookupPeer(pk types.NoisePublicKey) *Peer {
 	transport.peers.RLock()
 	defer transport.peers.RUnlock()
