@@ -122,6 +122,15 @@ func (peer *Peer) SendKeepalive() error {
 }
 
 func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
+	peer.endpoint.Lock()
+	endpoint := peer.endpoint.val
+	peer.endpoint.Unlock()
+
+	// If we don't have an endpoint, ignore the request.
+	if endpoint == nil {
+		return nil
+	}
+
 	if !isRetry {
 		peer.timers.handshakeAttempts.Store(0)
 	}
