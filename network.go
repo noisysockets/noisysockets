@@ -574,9 +574,9 @@ func (net *NoisySocketsNetwork) ListenPacket(network, address string) (stdnet.Pa
 	return &packetConn{PacketConn: pc, pd: net.pd}, nil
 }
 
-// GetPeers returns a list of all known peers.
-func (net *NoisySocketsNetwork) GetPeers() []types.NoisePublicKey {
-	return net.transport.GetPeers()
+// KnownPeers returns a list of all known peers.
+func (net *NoisySocketsNetwork) KnownPeers() []types.NoisePublicKey {
+	return net.transport.Peers()
 }
 
 // GetPeerEndpoint returns the public address/endpoint of a peer (if known).

@@ -356,7 +356,7 @@ func (transport *Transport) BatchSize() int {
 	return size
 }
 
-func (transport *Transport) GetPeers() []types.NoisePublicKey {
+func (transport *Transport) Peers() []types.NoisePublicKey {
 	transport.peers.RLock()
 	defer transport.peers.RUnlock()
 
