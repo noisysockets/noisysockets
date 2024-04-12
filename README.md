@@ -10,7 +10,7 @@ Examples of how to use Noisy Sockets can be found in the [examples](./examples) 
 
 ### gVisor Dependency
 
-When you import Noisy Sockets Go Modules will attempt to use the gVisor master branch. The master branch cannot be used as a library, so you will need to explictly import the synthetic go branch in your project. If you don't do this you will see some strange build errors.
+If you import Noisy Sockets using `go get -u` Go will attempt to use the gVisor master branch. Unfortunately the gVisor master branch cannot be imported as a library (due to be built with Bazel), instead you will need to explictly import gVisor's go branch. If you don't do this you will be greeted with some strange build errors.
 
 ```shell
 go get -u gvisor.dev/gvisor@go
