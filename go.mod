@@ -13,7 +13,7 @@ require (
 	golang.org/x/net v0.22.0
 	golang.org/x/sys v0.18.0
 	gopkg.in/yaml.v3 v3.0.1
-	gvisor.dev/gvisor v0.0.0-20240223225628-6c0239f8ece0
+	gvisor.dev/gvisor v0.0.0-20240411151737-0c094c3208a9
 )
 
 require (

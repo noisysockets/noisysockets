@@ -244,7 +244,7 @@ func (ss *sourceSink) BatchSize() int {
 
 func (ss *sourceSink) WriteNotify() {
 	pkt := ss.ep.Read()
-	if pkt.IsNil() {
+	if pkt == nil {
 		return
 	}
 

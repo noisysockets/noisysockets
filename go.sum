@@ -208,3 +208,5 @@ gotest.tools/v3 v3.5.0 h1:Ljk6PdHdOhAb5aDMWXjDLMMhph+BpztA4v1QdqEW2eY=
 gotest.tools/v3 v3.5.0/go.mod h1:isy3WKz7GK6uNw/sbHzfKBLvlvXwUyV06n6brMxxopU=
 gvisor.dev/gvisor v0.0.0-20240223225628-6c0239f8ece0 h1:TqHzCJU/Js8csJji6d6PhLPa5PNfdkY7XaYJcYFv6JI=
 gvisor.dev/gvisor v0.0.0-20240223225628-6c0239f8ece0/go.mod h1:YcCCAniKhCIGGvWxOobcre6euvNQON7nZCtMcVYO9rA=
+gvisor.dev/gvisor v0.0.0-20240411151737-0c094c3208a9 h1:qaRHCHMGQhXX8QENfM7Xd/pKlYMbDokThUWnyOjxj88=
+gvisor.dev/gvisor v0.0.0-20240411151737-0c094c3208a9/go.mod h1:NQHVAzMwvZ+Qe3ElSiHmq9RUm1MdNHpUZ52fiEqvn+0=
