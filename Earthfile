@@ -22,6 +22,12 @@ test:
     RUN go test -timeout=120s -coverprofile=coverage.out -v ./...
   END
   SAVE ARTIFACT coverage.out AS LOCAL coverage.out
+  WORKDIR /workspace/examples
+  # Build and run the examples.
+  RUN for example in $(find . -name 'main.go'); do \
+      go run "$example" || exit 1; \
+    done
+
 
 tools:
   RUN apt update && apt install -y ca-certificates curl jq

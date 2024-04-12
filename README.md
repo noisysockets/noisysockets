@@ -6,7 +6,7 @@ Noisy Sockets implements a [drop-in replacement](./network/network.go) for the G
 
 ## Usage
 
-Examples of how to use Noisy Sockets can be found in the examples directory, as well as the [benchmarks](https://github.com/noisysockets/benchmarks) repository.
+Examples of how to use Noisy Sockets can be found in the [examples](./examples) directory.
 
 ### gVisor Dependency
 

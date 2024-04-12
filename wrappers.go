@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 /*
- * Copyright (C) 2024 Damian Peckett <damian@pecke.tt>.
+ * Copyright (C) 2024 The Noisy Sockets Authors.
  *
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -12,8 +12,10 @@ package noisysockets
 import (
 	stdnet "net"
 	"net/netip"
+	"strings"
 
 	"github.com/noisysockets/noisysockets/types"
+	"gvisor.dev/gvisor/pkg/syserr"
 )
 
 // Addr is a wrapper around net.Addr that includes the source NoisePublicKey.
@@ -55,6 +57,11 @@ type listener struct {
 func (l *listener) Accept() (stdnet.Conn, error) {
 	conn, err := l.Listener.Accept()
 	if err != nil {
+		// The network stack was closed.
+		if strings.Contains(err.Error(), syserr.ErrInvalidEndpointState.String()) {
+			return nil, stdnet.ErrClosed
+		}
+
 		return nil, err
 	}
 
