@@ -38,13 +38,13 @@ import (
 	"net/netip"
 	"syscall"
 
+	"github.com/noisysockets/netstack/pkg/buffer"
+	"github.com/noisysockets/netstack/pkg/tcpip/header"
+	"github.com/noisysockets/netstack/pkg/tcpip/link/channel"
+	"github.com/noisysockets/netstack/pkg/tcpip/stack"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/transport"
 	"github.com/noisysockets/noisysockets/types"
-	"gvisor.dev/gvisor/pkg/buffer"
-	"gvisor.dev/gvisor/pkg/tcpip/header"
-	"gvisor.dev/gvisor/pkg/tcpip/link/channel"
-	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
 const (

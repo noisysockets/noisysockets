@@ -14,8 +14,8 @@ import (
 	"net/netip"
 	"strings"
 
+	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/noisysockets/types"
-	"gvisor.dev/gvisor/pkg/syserr"
 )
 
 // Addr is a wrapper around net.Addr that includes the source NoisePublicKey.
@@ -58,7 +58,7 @@ func (l *listener) Accept() (stdnet.Conn, error) {
 	conn, err := l.Listener.Accept()
 	if err != nil {
 		// The network stack was closed.
-		if strings.Contains(err.Error(), syserr.ErrInvalidEndpointState.String()) {
+		if strings.Contains(err.Error(), (&tcpip.ErrInvalidEndpointState{}).String()) {
 			return nil, stdnet.ErrClosed
 		}
 

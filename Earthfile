@@ -28,7 +28,6 @@ test:
       go run "$example" || exit 1; \
     done
 
-
 tools:
   RUN apt update && apt install -y ca-certificates curl jq
   RUN curl -fsSL https://get.docker.com | bash

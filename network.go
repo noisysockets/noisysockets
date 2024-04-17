@@ -44,6 +44,15 @@ import (
 
 	stdnet "net"
 
+	"github.com/noisysockets/netstack/pkg/tcpip"
+	"github.com/noisysockets/netstack/pkg/tcpip/adapters/gonet"
+	"github.com/noisysockets/netstack/pkg/tcpip/header"
+	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv4"
+	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv6"
+	"github.com/noisysockets/netstack/pkg/tcpip/stack"
+	"github.com/noisysockets/netstack/pkg/tcpip/transport/icmp"
+	"github.com/noisysockets/netstack/pkg/tcpip/transport/tcp"
+	"github.com/noisysockets/netstack/pkg/tcpip/transport/udp"
 	"github.com/noisysockets/noisysockets/config/v1alpha1"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/dns"
@@ -51,15 +60,6 @@ import (
 	"github.com/noisysockets/noisysockets/internal/transport"
 	"github.com/noisysockets/noisysockets/network"
 	"github.com/noisysockets/noisysockets/types"
-	"gvisor.dev/gvisor/pkg/tcpip"
-	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
-	"gvisor.dev/gvisor/pkg/tcpip/header"
-	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
-	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
-	"gvisor.dev/gvisor/pkg/tcpip/stack"
-	"gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
-	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
-	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 )
 
 var (

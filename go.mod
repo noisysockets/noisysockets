@@ -1,19 +1,19 @@
 module github.com/noisysockets/noisysockets
 
-go 1.22
+go 1.22.0
 
 require (
 	github.com/docker/docker v25.0.3+incompatible
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/miekg/dns v1.1.58
 	github.com/neilotoole/slogt v1.1.0
+	github.com/noisysockets/netstack v0.1.0
 	github.com/stretchr/testify v1.9.0
 	github.com/testcontainers/testcontainers-go v0.29.1
 	golang.org/x/crypto v0.21.0
 	golang.org/x/net v0.22.0
-	golang.org/x/sys v0.18.0
+	golang.org/x/sys v0.19.0
 	gopkg.in/yaml.v3 v3.0.1
-	gvisor.dev/gvisor v0.0.0-20240411151737-0c094c3208a9
 )
 
 require (
