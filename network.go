@@ -46,7 +46,6 @@ import (
 
 	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/netstack/pkg/tcpip/adapters/gonet"
-	"github.com/noisysockets/netstack/pkg/tcpip/header"
 	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv4"
 	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv6"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
@@ -104,7 +103,7 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 	pd := newPeerDirectory()
 
 	// Add the local node to the peer directory.
-	if err := pd.AddPeer(conf.Name, privateKey.PublicKey(), localAddrs); err != nil {
+	if err := pd.AddPeer(conf.Name, privateKey.PublicKey(), localAddrs, false); err != nil {
 		return nil, fmt.Errorf("could not add local peer to directory: %w", err)
 	}
 
@@ -152,73 +151,24 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 		dnsServers = append(dnsServers, dnsServer)
 	}
 
-	s := stack.New(stack.Options{
-		NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
-		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol, icmp.NewProtocol4, icmp.NewProtocol6},
-		HandleLocal:        true,
-	})
-
-	sourceSink, err := newSourceSink(logger, pd, s, defaultGateway)
-	if err != nil {
-		return nil, fmt.Errorf("could not create source sink: %w", err)
-	}
-
 	var hasV4, hasV6 bool
 	for _, addr := range localAddrs {
-		var protoNumber tcpip.NetworkProtocolNumber
-		if addr.Is4() {
-			protoNumber = ipv4.ProtocolNumber
-		} else if addr.Is6() {
-			protoNumber = ipv6.ProtocolNumber
-		}
-
-		protoAddr := tcpip.ProtocolAddress{
-			Protocol:          protoNumber,
-			AddressWithPrefix: tcpip.AddrFromSlice(addr.AsSlice()).WithPrefix(),
-		}
-
-		if err := s.AddProtocolAddress(1, protoAddr, stack.AddressProperties{}); err != nil {
-			return nil, fmt.Errorf("could not add protocol address: %v", err)
-		}
 		if addr.Is4() {
 			hasV4 = true
 		} else if addr.Is6() {
 			hasV6 = true
 		}
 	}
-	if hasV4 {
-		var gatewayV4 tcpip.Address
-		if defaultGateway != nil {
-			for _, addr := range defaultGatewayAddrs {
-				if addr.Is4() {
-					gatewayV4 = tcpip.AddrFromSlice(addr.AsSlice())
-					break
-				}
-			}
-		}
 
-		s.AddRoute(tcpip.Route{
-			Destination: header.IPv4EmptySubnet,
-			NIC:         1,
-			Gateway:     gatewayV4,
-		})
-	}
-	if hasV6 {
-		var gatewayV6 tcpip.Address
-		if defaultGateway != nil {
-			for _, addr := range defaultGatewayAddrs {
-				if addr.Is6() {
-					gatewayV6 = tcpip.AddrFromSlice(addr.AsSlice())
-					break
-				}
-			}
-		}
+	s := stack.New(stack.Options{
+		NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
+		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol, icmp.NewProtocol4, icmp.NewProtocol6},
+		HandleLocal:        true,
+	})
 
-		s.AddRoute(tcpip.Route{
-			Destination: header.IPv6EmptySubnet,
-			NIC:         1,
-			Gateway:     gatewayV6,
-		})
+	sourceSink, err := newSourceSink(logger, pd, s, localAddrs, defaultGatewayAddrs)
+	if err != nil {
+		return nil, fmt.Errorf("could not create source sink: %w", err)
 	}
 
 	t := transport.NewTransport(sourceSink, conn.NewStdNetBind(), logger)
@@ -244,7 +194,7 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 			peerAddrs = append(peerAddrs, addr)
 		}
 
-		if err := pd.AddPeer(peerConf.Name, peerPublicKey, peerAddrs); err != nil {
+		if err := pd.AddPeer(peerConf.Name, peerPublicKey, peerAddrs, peerConf.DefaultGateway); err != nil {
 			return nil, fmt.Errorf("failed to add peer %s to directory: %w", peerConf.Name, err)
 		}
 

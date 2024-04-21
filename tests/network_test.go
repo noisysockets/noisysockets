@@ -38,10 +38,13 @@ import (
 func TestNetwork(t *testing.T) {
 	logger := slogt.New(t)
 
-	serverPrivateKey, err := types.NewPrivateKey()
+	clientPrivateKey, err := types.NewPrivateKey()
 	require.NoError(t, err)
 
-	clientPrivateKey, err := types.NewPrivateKey()
+	tcpServerPrivateKey, err := types.NewPrivateKey()
+	require.NoError(t, err)
+
+	udpServerPrivateKey, err := types.NewPrivateKey()
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -54,14 +57,14 @@ func TestNetwork(t *testing.T) {
 
 	go func() {
 		conf := v1alpha1.Config{
-			Name:       "server",
+			Name:       "tcp-server",
 			ListenPort: 12345,
-			PrivateKey: serverPrivateKey.String(),
-			IPs:        []string{"10.7.0.1"},
+			PrivateKey: tcpServerPrivateKey.String(),
+			IPs:        []string{"10.7.0.2"},
 			Peers: []v1alpha1.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.PublicKey().String(),
-					IPs:       []string{"10.7.0.2"},
+					IPs:       []string{"10.7.0.1"},
 				},
 			},
 		}
@@ -98,6 +101,32 @@ func TestNetwork(t *testing.T) {
 			}
 		}()
 
+		<-ctx.Done()
+
+		_ = srv.Close()
+	}()
+
+	go func() {
+		conf := v1alpha1.Config{
+			Name:       "udp-server",
+			ListenPort: 12346,
+			PrivateKey: udpServerPrivateKey.String(),
+			IPs:        []string{"10.7.0.3"},
+			Peers: []v1alpha1.PeerConfig{
+				{
+					PublicKey: clientPrivateKey.PublicKey().String(),
+					IPs:       []string{"10.7.0.1"},
+				},
+			},
+		}
+
+		net, err := noisysockets.NewNetwork(logger, &conf)
+		if err != nil {
+			logger.Error("Failed to create server network", "error", err)
+			return
+		}
+		defer net.Close()
+
 		// A little UDP echo server.
 		udpConn, err := net.ListenPacket("udp", "0.0.0.0:10000")
 		if err != nil {
@@ -128,23 +157,27 @@ func TestNetwork(t *testing.T) {
 
 		<-ctx.Done()
 
-		_ = srv.Close()
 		_ = udpConn.Close()
 	}()
 
 	conf := v1alpha1.Config{
 		Name:       "client",
-		ListenPort: 12346,
+		ListenPort: 12347,
 		PrivateKey: clientPrivateKey.String(),
-		IPs:        []string{"10.7.0.2"},
+		IPs:        []string{"10.7.0.1"},
 		Peers: []v1alpha1.PeerConfig{
 			{
-				Name:      "server",
-				PublicKey: serverPrivateKey.PublicKey().String(),
+				Name:      "tcp-server",
+				PublicKey: tcpServerPrivateKey.PublicKey().String(),
 				Endpoint:  "localhost:12345",
-				IPs:       []string{"10.7.0.1"},
+				IPs:       []string{"10.7.0.2"},
 			},
-		},
+			{
+				Name:      "udp-server",
+				PublicKey: udpServerPrivateKey.PublicKey().String(),
+				Endpoint:  "localhost:12346",
+				IPs:       []string{"10.7.0.3"},
+			}},
 	}
 
 	net, err := noisysockets.NewNetwork(logger, &conf)
@@ -163,7 +196,7 @@ func TestNetwork(t *testing.T) {
 		// Wait for server to start.
 		time.Sleep(time.Second)
 
-		resp, err := client.Get("http://server")
+		resp, err := client.Get("http://tcp-server")
 		require.NoError(t, err)
 
 		t.Cleanup(func() {
@@ -179,7 +212,7 @@ func TestNetwork(t *testing.T) {
 	})
 
 	t.Run("UDP", func(t *testing.T) {
-		conn, err := net.Dial("udp", "server:10000")
+		conn, err := net.Dial("udp", "udp-server:10000")
 		require.NoError(t, err)
 		defer conn.Close()
 
@@ -253,6 +286,9 @@ func TestWireGuardCompatibility(t *testing.T) {
 	t.Cleanup(func() {
 		require.NoError(t, wgC.Terminate(ctx))
 	})
+
+	// Time for everything to settle down.
+	time.Sleep(3 * time.Second)
 
 	outputDir := t.TempDir()
 	configPath := filepath.Join(outputDir, "noisysockets.yaml")

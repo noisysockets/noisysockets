@@ -18,10 +18,12 @@ test:
   COPY go.mod go.sum .
   RUN go mod download
   COPY . .
-  WITH DOCKER
-    RUN go test -timeout=120s -coverprofile=coverage.out -v ./...
-  END
+  RUN go test -coverprofile=coverage.out -v ./...
   SAVE ARTIFACT coverage.out AS LOCAL coverage.out
+  WORKDIR /workspace/tests
+  WITH DOCKER
+    RUN go test -timeout=120s -v ./...
+  END
   WORKDIR /workspace/examples
   # Build and run the examples.
   RUN for example in $(find . -name 'main.go'); do \

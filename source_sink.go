@@ -39,8 +39,11 @@ import (
 	"syscall"
 
 	"github.com/noisysockets/netstack/pkg/buffer"
+	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/netstack/pkg/tcpip/header"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/channel"
+	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv4"
+	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv6"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/transport"
@@ -56,29 +59,35 @@ var (
 )
 
 type sourceSink struct {
-	logger         *slog.Logger
-	pd             *peerDirectory
-	stack          *stack.Stack
-	ep             *channel.Endpoint
-	notifyHandle   *channel.NotificationHandle
-	incoming       chan *stack.PacketBuffer
-	defaultGateway *types.NoisePublicKey
+	logger              *slog.Logger
+	pd                  *peerDirectory
+	stack               *stack.Stack
+	ep                  *channel.Endpoint
+	notifyHandle        *channel.NotificationHandle
+	incoming            chan *stack.PacketBuffer
+	localAddrs          []netip.Addr
+	defaultGatewayAddrs []netip.Addr
 }
 
-func newSourceSink(logger *slog.Logger, pd *peerDirectory, s *stack.Stack, defaultGateway *types.NoisePublicKey) (*sourceSink, error) {
+func newSourceSink(logger *slog.Logger, pd *peerDirectory, s *stack.Stack, localAddrs, defaultGatewayAddrs []netip.Addr) (*sourceSink, error) {
 	ss := &sourceSink{
-		logger:         logger,
-		pd:             pd,
-		stack:          s,
-		ep:             channel.New(queueSize, uint32(transport.DefaultMTU), ""),
-		incoming:       make(chan *stack.PacketBuffer),
-		defaultGateway: defaultGateway,
+		logger:              logger,
+		pd:                  pd,
+		stack:               s,
+		ep:                  channel.New(queueSize, uint32(transport.DefaultMTU), ""),
+		incoming:            make(chan *stack.PacketBuffer),
+		localAddrs:          localAddrs,
+		defaultGatewayAddrs: defaultGatewayAddrs,
 	}
 
 	ss.notifyHandle = ss.ep.AddNotify(ss)
 
-	if err := s.CreateNIC(1, ss.ep); err != nil {
+	if err := ss.stack.CreateNIC(1, ss.ep); err != nil {
 		return nil, fmt.Errorf("could not create NIC: %v", err)
+	}
+
+	if err := ss.setupAddressesAndRoutes(); err != nil {
+		return nil, fmt.Errorf("could not set up addresses and routes: %w", err)
 	}
 
 	return ss, nil
@@ -102,14 +111,14 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []types.Nois
 		var peerAddr netip.Addr
 		switch pkt.NetworkProtocolNumber {
 		case header.IPv4ProtocolNumber:
-			hdr := header.IPv4(pkt.NetworkHeader().View().AsSlice())
+			hdr := header.IPv4(pkt.NetworkHeader().Slice())
 			if !hdr.IsValid(pkt.Size()) {
 				return fmt.Errorf("invalid IPv4 header")
 			}
 
 			peerAddr = netip.AddrFrom4(hdr.DestinationAddress().As4())
 		case header.IPv6ProtocolNumber:
-			hdr := header.IPv6(pkt.NetworkHeader().View().AsSlice())
+			hdr := header.IPv6(pkt.NetworkHeader().Slice())
 			if !hdr.IsValid(pkt.Size()) {
 				return fmt.Errorf("invalid IPv6 header")
 			}
@@ -122,11 +131,11 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []types.Nois
 		var ok bool
 		destinations[idx], ok = ss.pd.LookupPeerByAddress(peerAddr)
 		if !ok {
-			if ss.defaultGateway == nil {
+			// Do we perhaps have a gateway for this address?
+			destinations[idx], ok = ss.pd.GatewayForAddress(peerAddr)
+			if !ok {
 				return fmt.Errorf("unknown destination address %w", syscall.EADDRNOTAVAIL)
 			}
-
-			destinations[idx] = *ss.defaultGateway
 		}
 
 		view := pkt.ToView()
@@ -180,59 +189,15 @@ func (ss *sourceSink) Write(bufs [][]byte, sources []types.NoisePublicKey, offse
 			continue
 		}
 
-		pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(buf[offset:])})
-		switch buf[offset] >> 4 {
-		case 4:
-			// Validate source addresses to prevent spoofing.
-			if ss.defaultGateway == nil || sources[i] != *ss.defaultGateway {
-				hdr := header.IPv4(buf[offset:])
-				if !hdr.IsValid(pkt.Size()) {
-					ss.logger.Warn("Invalid IPv4 header")
-					continue
-				}
-
-				peerAddr := netip.AddrFrom4(hdr.SourceAddress().As4())
-
-				pk, ok := ss.pd.LookupPeerByAddress(peerAddr)
-				if !ok {
-					ss.logger.Warn("Unknown source address", "ip", peerAddr.String())
-					continue
-				}
-
-				if pk != sources[i] {
-					ss.logger.Warn("Invalid source address for peer", "ip", peerAddr.String())
-					continue
-				}
-			}
-
-			ss.ep.InjectInbound(header.IPv4ProtocolNumber, pkt)
-		case 6:
-			// Validate source addresses to prevent spoofing.
-			if ss.defaultGateway == nil || sources[i] != *ss.defaultGateway {
-				hdr := header.IPv6(pkt.NetworkHeader().View().AsSlice())
-				if !hdr.IsValid(pkt.Size()) {
-					ss.logger.Warn("Invalid IPv6 header")
-					continue
-				}
-
-				peerAddr := netip.AddrFrom16(hdr.SourceAddress().As16())
-
-				pk, ok := ss.pd.LookupPeerByAddress(peerAddr)
-				if !ok {
-					ss.logger.Warn("Unknown source address", "ip", peerAddr.String())
-					continue
-				}
-
-				if pk != sources[i] {
-					ss.logger.Warn("Invalid source address for peer", "ip", peerAddr.String())
-					continue
-				}
-			}
-
-			ss.ep.InjectInbound(header.IPv6ProtocolNumber, pkt)
-		default:
-			return 0, syscall.EAFNOSUPPORT
+		// Validate the source address (to prevent spoofing).
+		protocolNumber, err := ss.validateSourceAddress(buf[offset:], sources[i])
+		if err != nil {
+			return i, err
 		}
+
+		pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(buf[offset:])})
+
+		ss.ep.InjectInbound(protocolNumber, pkt)
 	}
 
 	return len(bufs), nil
@@ -249,4 +214,108 @@ func (ss *sourceSink) WriteNotify() {
 	}
 
 	ss.incoming <- pkt
+}
+
+// setupAddressesAndRoutes sets up the addresses and routes for a NIC.
+func (ss *sourceSink) setupAddressesAndRoutes() error {
+	var hasV4, hasV6 bool
+	for _, addr := range ss.localAddrs {
+		var protoNumber tcpip.NetworkProtocolNumber
+		if addr.Is4() {
+			protoNumber = ipv4.ProtocolNumber
+		} else if addr.Is6() {
+			protoNumber = ipv6.ProtocolNumber
+		}
+
+		protoAddr := tcpip.ProtocolAddress{
+			Protocol:          protoNumber,
+			AddressWithPrefix: tcpip.AddrFromSlice(addr.AsSlice()).WithPrefix(),
+		}
+
+		if err := ss.stack.AddProtocolAddress(1, protoAddr, stack.AddressProperties{}); err != nil {
+			return fmt.Errorf("could not add protocol address: %v", err)
+		}
+		if addr.Is4() {
+			hasV4 = true
+		} else if addr.Is6() {
+			hasV6 = true
+		}
+	}
+
+	var defaultGatewayV4, defaultGatewayV6 tcpip.Address
+	for _, addr := range ss.defaultGatewayAddrs {
+		if hasV4 && addr.Is4() {
+			defaultGatewayV4 = tcpip.AddrFromSlice(addr.AsSlice())
+		} else if hasV6 && addr.Is6() {
+			defaultGatewayV6 = tcpip.AddrFromSlice(addr.AsSlice())
+		}
+	}
+
+	var routes []tcpip.Route
+	if hasV4 {
+		routes = append(routes, tcpip.Route{
+			NIC:         1,
+			Destination: header.IPv4EmptySubnet,
+			Gateway:     defaultGatewayV4,
+		})
+	}
+	if hasV6 {
+		routes = append(routes, tcpip.Route{
+			NIC:         1,
+			Destination: header.IPv6EmptySubnet,
+			Gateway:     defaultGatewayV6,
+		})
+	}
+
+	for _, route := range routes {
+		ss.stack.AddRoute(route)
+	}
+
+	return nil
+}
+
+func (ss *sourceSink) validateSourceAddress(buf []byte, source types.NoisePublicKey) (tcpip.NetworkProtocolNumber, error) {
+	var protocolNumber tcpip.NetworkProtocolNumber
+	switch header.IPVersion(buf) {
+	case header.IPv4Version:
+		protocolNumber = header.IPv4ProtocolNumber
+	case header.IPv6Version:
+		protocolNumber = header.IPv6ProtocolNumber
+	default:
+		return 0, fmt.Errorf("unknown IP version: %w", syscall.EAFNOSUPPORT)
+	}
+
+	var peerAddr netip.Addr
+	switch protocolNumber {
+	case header.IPv4ProtocolNumber:
+		hdr := header.IPv4(buf)
+		if !hdr.IsValid(len(buf)) {
+			return protocolNumber, fmt.Errorf("invalid IPv4 header")
+		}
+
+		peerAddr = netip.AddrFrom4(hdr.SourceAddress().As4())
+	case header.IPv6ProtocolNumber:
+		hdr := header.IPv6(buf)
+		if !hdr.IsValid(len(buf)) {
+			return protocolNumber, fmt.Errorf("invalid IPv6 header")
+		}
+
+		peerAddr = netip.AddrFrom16(hdr.SourceAddress().As16())
+	default:
+		return protocolNumber, fmt.Errorf("unknown network protocol: %w", syscall.EAFNOSUPPORT)
+	}
+
+	pk, ok := ss.pd.LookupPeerByAddress(peerAddr)
+	if !ok {
+		pk, ok = ss.pd.GatewayForAddress(peerAddr)
+		if !ok {
+			return protocolNumber, fmt.Errorf("unknown source address: %w", syscall.EADDRNOTAVAIL)
+		}
+	}
+
+	if pk != source {
+		return protocolNumber, fmt.Errorf("invalid source address for peer")
+	}
+
+	return protocolNumber, nil
 }

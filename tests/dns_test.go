@@ -7,7 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-package dns_test
+package noisysockets_test
 
 import (
 	"context"
@@ -27,7 +27,7 @@ import (
 func TestLookupHost(t *testing.T) {
 	dnsReq := testcontainers.ContainerRequest{
 		FromDockerfile: testcontainers.FromDockerfile{
-			Context: "testdata",
+			Context: "testdata/dns",
 		},
 		ExposedPorts: []string{"53/tcp", "53/udp"},
 		WaitingFor:   wait.ForListeningPort("53/tcp"),
