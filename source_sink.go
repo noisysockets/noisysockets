@@ -59,25 +59,23 @@ var (
 )
 
 type sourceSink struct {
-	logger              *slog.Logger
-	pd                  *peerDirectory
-	stack               *stack.Stack
-	ep                  *channel.Endpoint
-	notifyHandle        *channel.NotificationHandle
-	incoming            chan *stack.PacketBuffer
-	localAddrs          []netip.Addr
-	defaultGatewayAddrs []netip.Addr
+	logger       *slog.Logger
+	pd           *peerDirectory
+	stack        *stack.Stack
+	ep           *channel.Endpoint
+	notifyHandle *channel.NotificationHandle
+	incoming     chan *stack.PacketBuffer
+	localAddrs   []netip.Addr
 }
 
-func newSourceSink(logger *slog.Logger, pd *peerDirectory, s *stack.Stack, localAddrs, defaultGatewayAddrs []netip.Addr) (*sourceSink, error) {
+func newSourceSink(logger *slog.Logger, pd *peerDirectory, s *stack.Stack, localAddrs []netip.Addr) (*sourceSink, error) {
 	ss := &sourceSink{
-		logger:              logger,
-		pd:                  pd,
-		stack:               s,
-		ep:                  channel.New(queueSize, uint32(transport.DefaultMTU), ""),
-		incoming:            make(chan *stack.PacketBuffer),
-		localAddrs:          localAddrs,
-		defaultGatewayAddrs: defaultGatewayAddrs,
+		logger:     logger,
+		pd:         pd,
+		stack:      s,
+		ep:         channel.New(queueSize, uint32(transport.DefaultMTU), ""),
+		incoming:   make(chan *stack.PacketBuffer),
+		localAddrs: localAddrs,
 	}
 
 	ss.notifyHandle = ss.ep.AddNotify(ss)
@@ -129,10 +127,10 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []types.Nois
 		}
 
 		var ok bool
-		destinations[idx], ok = ss.pd.LookupPeerByAddress(peerAddr)
+		destinations[idx], ok = ss.pd.lookupPeerByAddress(peerAddr)
 		if !ok {
 			// Do we perhaps have a gateway for this address?
-			destinations[idx], ok = ss.pd.GatewayForAddress(peerAddr)
+			destinations[idx], ok = ss.pd.gatewayForAddress(peerAddr)
 			if !ok {
 				return fmt.Errorf("unknown destination address %w", syscall.EADDRNOTAVAIL)
 			}
@@ -242,29 +240,69 @@ func (ss *sourceSink) setupAddressesAndRoutes() error {
 		}
 	}
 
-	var defaultGatewayV4, defaultGatewayV6 tcpip.Address
-	for _, addr := range ss.defaultGatewayAddrs {
-		if hasV4 && addr.Is4() {
-			defaultGatewayV4 = tcpip.AddrFromSlice(addr.AsSlice())
-		} else if hasV6 && addr.Is6() {
-			defaultGatewayV6 = tcpip.AddrFromSlice(addr.AsSlice())
+	var addedDefaultGateway bool
+	var routes []tcpip.Route
+
+	err := ss.pd.forEachGateway(func(addrs []netip.Addr, subnets []*net.IPNet, defaultGateway bool) error {
+		if defaultGateway {
+			addedDefaultGateway = true
 		}
+
+		var addrV4, addrV6 tcpip.Address
+		for _, addr := range addrs {
+			if hasV4 && addr.Is4() {
+				addrV4 = tcpip.AddrFromSlice(addr.AsSlice())
+			} else if hasV6 && addr.Is6() {
+				addrV6 = tcpip.AddrFromSlice(addr.AsSlice())
+			}
+		}
+
+		for _, subnet := range subnets {
+			if hasV4 && subnet.IP.To4() != nil {
+				dstNetwork, err := tcpip.NewSubnet(tcpip.AddrFrom4Slice(subnet.IP.To4()), tcpip.MaskFromBytes(subnet.Mask))
+				if err != nil {
+					return fmt.Errorf("could not parse ipv4 subnet: %v", err)
+				}
+
+				routes = append(routes, tcpip.Route{
+					NIC:         1,
+					Destination: dstNetwork,
+					Gateway:     addrV4,
+				})
+			} else if hasV6 && subnet.IP.To16() != nil {
+				dstNetwork, err := tcpip.NewSubnet(tcpip.AddrFrom16Slice(subnet.IP.To16()), tcpip.MaskFromBytes(subnet.Mask))
+				if err != nil {
+					return fmt.Errorf("could not parse ipv6 subnet: %v", err)
+				}
+
+				routes = append(routes, tcpip.Route{
+					NIC:         1,
+					Destination: dstNetwork,
+					Gateway:     addrV6,
+				})
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("could not add gateway routes: %v", err)
 	}
 
-	var routes []tcpip.Route
-	if hasV4 {
-		routes = append(routes, tcpip.Route{
-			NIC:         1,
-			Destination: header.IPv4EmptySubnet,
-			Gateway:     defaultGatewayV4,
-		})
-	}
-	if hasV6 {
-		routes = append(routes, tcpip.Route{
-			NIC:         1,
-			Destination: header.IPv6EmptySubnet,
-			Gateway:     defaultGatewayV6,
-		})
+	// Add a dummy default route if no default gateway was specified.
+	if !addedDefaultGateway {
+		if hasV4 {
+			routes = append(routes, tcpip.Route{
+				NIC:         1,
+				Destination: header.IPv4EmptySubnet,
+			})
+		}
+		if hasV6 {
+			routes = append(routes, tcpip.Route{
+				NIC:         1,
+				Destination: header.IPv6EmptySubnet,
+			})
+		}
 	}
 
 	for _, route := range routes {
@@ -305,9 +343,10 @@ func (ss *sourceSink) validateSourceAddress(buf []byte, source types.NoisePublic
 		return protocolNumber, fmt.Errorf("unknown network protocol: %w", syscall.EAFNOSUPPORT)
 	}
 
-	pk, ok := ss.pd.LookupPeerByAddress(peerAddr)
+	pk, ok := ss.pd.lookupPeerByAddress(peerAddr)
 	if !ok {
-		pk, ok = ss.pd.GatewayForAddress(peerAddr)
+		// Gateways are not allowed to impersonate known peers.
+		pk, ok = ss.pd.gatewayForAddress(peerAddr)
 		if !ok {
 			return protocolNumber, fmt.Errorf("unknown source address: %w", syscall.EADDRNOTAVAIL)
 		}

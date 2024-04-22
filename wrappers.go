@@ -41,7 +41,7 @@ func (c *Conn) RemoteAddr() stdnet.Addr {
 		return nil
 	}
 
-	pk, ok := c.pd.LookupPeerByAddress(netip.MustParseAddrPort(remoteAddr.String()).Addr())
+	pk, ok := c.pd.lookupPeerByAddress(netip.MustParseAddrPort(remoteAddr.String()).Addr())
 	if !ok {
 		// Just return the standard address if we can't find the peer.
 		return remoteAddr
@@ -80,7 +80,7 @@ func (pc *packetConn) ReadFrom(b []byte) (int, stdnet.Addr, error) {
 		return n, nil, err
 	}
 
-	pk, ok := pc.pd.LookupPeerByAddress(netip.MustParseAddrPort(addr.String()).Addr())
+	pk, ok := pc.pd.lookupPeerByAddress(netip.MustParseAddrPort(addr.String()).Addr())
 	if !ok {
 		// Just return the standard address if we can't find the peer.
 		return n, addr, err

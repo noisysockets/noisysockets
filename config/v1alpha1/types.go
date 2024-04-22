@@ -50,6 +50,8 @@ type PeerConfig struct {
 	IPs []string `yaml:"ips,omitempty" mapstructure:"ips,omitempty"`
 	// DefaultGateway indicates this peer should be used as the default gateway for traffic.
 	DefaultGateway bool `yaml:"defaultGateway,omitempty" mapstructure:"defaultGateway,omitempty"`
+	// GatewayForCIDRs is a list of subnets for which this peer should be used as the gateway.
+	GatewayForCIDRs []string `yaml:"gatewayForCIDRs,omitempty" mapstructure:"gatewayForCIDRs,omitempty"`
 }
 
 func (c Config) GetKind() string {

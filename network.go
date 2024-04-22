@@ -103,30 +103,8 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 	pd := newPeerDirectory()
 
 	// Add the local node to the peer directory.
-	if err := pd.AddPeer(conf.Name, privateKey.PublicKey(), localAddrs, false); err != nil {
+	if err := pd.addPeer(conf.Name, privateKey.PublicKey(), localAddrs, false, nil); err != nil {
 		return nil, fmt.Errorf("could not add local peer to directory: %w", err)
-	}
-
-	var defaultGateway *types.NoisePublicKey
-	var defaultGatewayAddrs []netip.Addr
-	for _, peerConf := range conf.Peers {
-		if peerConf.DefaultGateway {
-			defaultGateway = new(types.NoisePublicKey)
-			if err := defaultGateway.FromString(peerConf.PublicKey); err != nil {
-				return nil, fmt.Errorf("could not parse default gateway public key: %w", err)
-			}
-
-			for _, ip := range peerConf.IPs {
-				addr, err := netip.ParseAddr(ip)
-				if err != nil {
-					return nil, fmt.Errorf("could not parse default gateway address: %w", err)
-				}
-
-				defaultGatewayAddrs = append(defaultGatewayAddrs, addr)
-			}
-
-			break
-		}
 	}
 
 	var dnsServers []netip.AddrPort
@@ -166,7 +144,7 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 		HandleLocal:        true,
 	})
 
-	sourceSink, err := newSourceSink(logger, pd, s, localAddrs, defaultGatewayAddrs)
+	sourceSink, err := newSourceSink(logger, pd, s, localAddrs)
 	if err != nil {
 		return nil, fmt.Errorf("could not create source sink: %w", err)
 	}
@@ -194,7 +172,16 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 			peerAddrs = append(peerAddrs, addr)
 		}
 
-		if err := pd.AddPeer(peerConf.Name, peerPublicKey, peerAddrs, peerConf.DefaultGateway); err != nil {
+		var gatewayForCIDRs []*stdnet.IPNet
+		for _, cidr := range peerConf.GatewayForCIDRs {
+			_, subnet, err := stdnet.ParseCIDR(cidr)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse CIDR %q: %v", cidr, err)
+			}
+			gatewayForCIDRs = append(gatewayForCIDRs, subnet)
+		}
+
+		if err := pd.addPeer(peerConf.Name, peerPublicKey, peerAddrs, peerConf.DefaultGateway, gatewayForCIDRs); err != nil {
 			return nil, fmt.Errorf("failed to add peer %s to directory: %w", peerConf.Name, err)
 		}
 
@@ -273,7 +260,7 @@ func (net *NoisySocketsNetwork) LookupHost(host string) ([]string, error) {
 	}
 
 	// Host is the name of a peer.
-	if peerAddrs, ok := net.pd.LookupPeerAddressesByName(host); ok {
+	if peerAddrs, ok := net.pd.lookupPeerAddressesByName(host); ok {
 		for _, peerAddr := range peerAddrs {
 			if net.hasV4 && peerAddr.Is4() {
 				addrs = append(addrs, peerAddr)

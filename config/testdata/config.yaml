@@ -10,3 +10,8 @@ peers:
   endpoint: 127.0.0.1:12345
   ips:
   - 10.7.0.1
+- name: gateway
+  publicKey: aVHVSvdp1s9Cmw1r7XJgBSjXsSMpXdsskiuwPVYUdCk=
+  endpoint: 127.0.0.1:12346
+  gatewayForCIDRs:
+  - 192.168.0.0/24

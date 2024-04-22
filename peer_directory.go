@@ -21,6 +21,7 @@ type peerDirectory struct {
 	peerNames       map[string]types.NoisePublicKey
 	peerAddresses   map[types.NoisePublicKey][]netip.Addr
 	fromPeerAddress map[netip.Addr]types.NoisePublicKey
+	defaultGateway  *types.NoisePublicKey
 	gatewayPeers    map[types.NoisePublicKey][]*stdnet.IPNet
 }
 
@@ -33,23 +34,24 @@ func newPeerDirectory() *peerDirectory {
 	}
 }
 
-func (pd *peerDirectory) AddPeer(name string, publicKey types.NoisePublicKey, addrs []netip.Addr, defaultGateway bool) error {
+func (pd *peerDirectory) addPeer(name string, pk types.NoisePublicKey, addrs []netip.Addr,
+	defaultGateway bool, gatewayForCIDRs []*stdnet.IPNet) error {
 	if name != "" {
-		pd.peerNames[name] = publicKey
+		pd.peerNames[name] = pk
 	}
 
-	pd.peerAddresses[publicKey] = addrs
+	pd.peerAddresses[pk] = addrs
 	for _, addr := range addrs {
 		if _, ok := pd.fromPeerAddress[addr]; ok {
 			return fmt.Errorf("address %s already in use", addr)
 		}
 
-		pd.fromPeerAddress[addr] = publicKey
+		pd.fromPeerAddress[addr] = pk
 	}
 
-	// TODO: support multiple gateways/routes.
 	if defaultGateway {
-		pd.gatewayPeers[publicKey] = []*stdnet.IPNet{
+		pd.defaultGateway = &pk
+		pd.gatewayPeers[pk] = []*stdnet.IPNet{
 			{
 				IP:   stdnet.IPv4zero,
 				Mask: stdnet.CIDRMask(0, 32),
@@ -59,31 +61,28 @@ func (pd *peerDirectory) AddPeer(name string, publicKey types.NoisePublicKey, ad
 				Mask: stdnet.CIDRMask(0, 128),
 			},
 		}
+	} else if len(gatewayForCIDRs) > 0 {
+		pd.gatewayPeers[pk] = gatewayForCIDRs
 	}
 
 	return nil
 }
 
-func (pd *peerDirectory) LookupPeerAddressesByName(name string) ([]netip.Addr, bool) {
-	publicKey, ok := pd.peerNames[name]
+func (pd *peerDirectory) lookupPeerAddressesByName(name string) ([]netip.Addr, bool) {
+	pk, ok := pd.peerNames[name]
 	if !ok {
 		return nil, false
 	}
-	addrs, ok := pd.peerAddresses[publicKey]
+	addrs, ok := pd.peerAddresses[pk]
 	return addrs, ok
 }
 
-func (pd *peerDirectory) LookupPeerByAddress(addr netip.Addr) (types.NoisePublicKey, bool) {
-	publicKey, ok := pd.fromPeerAddress[addr]
-	return publicKey, ok
+func (pd *peerDirectory) lookupPeerByAddress(addr netip.Addr) (types.NoisePublicKey, bool) {
+	pk, ok := pd.fromPeerAddress[addr]
+	return pk, ok
 }
 
-func (pd *peerDirectory) IsGateway(publicKey types.NoisePublicKey) bool {
-	_, ok := pd.gatewayPeers[publicKey]
-	return ok
-}
-
-func (pd *peerDirectory) GatewayForAddress(addr netip.Addr) (pk types.NoisePublicKey, ok bool) {
+func (pd *peerDirectory) gatewayForAddress(addr netip.Addr) (pk types.NoisePublicKey, ok bool) {
 	for pk, subnets := range pd.gatewayPeers {
 		for _, subnet := range subnets {
 			if subnet.Contains(stdnet.IP(addr.AsSlice())) {
@@ -93,4 +92,21 @@ func (pd *peerDirectory) GatewayForAddress(addr netip.Addr) (pk types.NoisePubli
 	}
 
 	return
+}
+
+func (pd *peerDirectory) forEachGateway(f func(addrs []netip.Addr, subnets []*stdnet.IPNet, defaultGateway bool) error) error {
+	for pk, subnets := range pd.gatewayPeers {
+		addrs, ok := pd.peerAddresses[pk]
+		if !ok {
+			return fmt.Errorf("could not find addresses for gateway peer: %s", pk)
+		}
+
+		defaultGateway := pd.defaultGateway != nil && *pd.defaultGateway == pk
+
+		if err := f(addrs, subnets, defaultGateway); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
