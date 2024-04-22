@@ -25,10 +25,11 @@ test:
     RUN go test -timeout=120s -v ./...
   END
   WORKDIR /workspace/examples
-  # Build and run the examples.
-  RUN for example in $(find . -name 'main.go'); do \
-      go run "$example" || exit 1; \
-    done
+  WITH DOCKER
+    RUN for example in $(find . -name 'main.go'); do \
+        go run "$example" || exit 1; \
+      done
+  END
 
 tools:
   RUN apt update && apt install -y ca-certificates curl jq

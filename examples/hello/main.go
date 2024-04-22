@@ -23,14 +23,14 @@ func main() {
 	// Generate keypair for peer that will act as TCP server.
 	serverPrivateKey, err := types.NewPrivateKey()
 	if err != nil {
-		logger.Error("Failed to generate private key", "error", err)
+		logger.Error("Failed to generate private key", slog.Any("error", err))
 		os.Exit(1)
 	}
 
 	// Generate keypair for peer that will act as TCP client.
 	clientPrivateKey, err := types.NewPrivateKey()
 	if err != nil {
-		logger.Error("Failed to generate private key", "error", err)
+		logger.Error("Failed to generate private key", slog.Any("error", err))
 		os.Exit(1)
 	}
 
@@ -49,7 +49,7 @@ func main() {
 		},
 	})
 	if err != nil {
-		logger.Error("Failed to create network", "error", err)
+		logger.Error("Failed to create network", slog.Any("error", err))
 		os.Exit(1)
 	}
 	defer serverNet.Close()
@@ -70,7 +70,7 @@ func main() {
 		},
 	})
 	if err != nil {
-		logger.Error("Failed to create network", "error", err)
+		logger.Error("Failed to create network", slog.Any("error", err))
 		os.Exit(1)
 	}
 	defer clientNet.Close()
@@ -86,11 +86,11 @@ func startServer(logger *slog.Logger, net network.Network, readyCh chan<- struct
 	// Create TCP listener on the "server" peer address.
 	lis, err := net.Listen("tcp", ":8080")
 	if err != nil {
-		logger.Error("Failed to listen", "error", err)
+		logger.Error("Failed to listen", slog.Any("error", err))
 		os.Exit(1)
 	}
 
-	logger.Info("Listening for connections", "address", lis.Addr().String())
+	logger.Info("Listening for connections", slog.String("address", lis.Addr().String()))
 
 	close(readyCh)
 
@@ -102,7 +102,7 @@ func startServer(logger *slog.Logger, net network.Network, readyCh chan<- struct
 				return
 			}
 
-			logger.Error("Failed to accept connection", "error", err)
+			logger.Error("Failed to accept connection", slog.Any("error", err))
 			os.Exit(1)
 		}
 
@@ -116,22 +116,22 @@ func startClient(logger *slog.Logger, net network.Network) {
 	// Dial the "server" peer address just like an ordinary net.Dial.
 	conn, err := net.Dial("tcp", "server:8080")
 	if err != nil {
-		logger.Error("Failed to dial", "error", err)
+		logger.Error("Failed to dial", slog.Any("error", err))
 		os.Exit(1)
 	}
 	defer conn.Close()
 
-	logger.Info("Connected to server", "address", conn.RemoteAddr().String())
+	logger.Info("Connected to server", slog.String("address", conn.RemoteAddr().String()))
 
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
-		line := scanner.Text()
+		msg := scanner.Text()
 
-		logger.Info("Received message from server", "message", line)
+		logger.Info("Received message from server", slog.String("message", msg))
 	}
 
 	if err := scanner.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
-		logger.Error("Failed to read message", "error", err)
+		logger.Error("Failed to read message", slog.Any("error", err))
 		os.Exit(1)
 	}
 }

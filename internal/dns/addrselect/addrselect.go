@@ -83,7 +83,7 @@ func SortByRFC6724withSrcs(net network.Network, addrs []netip.Addr, srcs []netip
 func srcAddrs(net network.Network, addrs []netip.Addr) []netip.Addr {
 	srcs := make([]netip.Addr, len(addrs))
 	for i := range addrs {
-		c, err := net.Dial("udp", addrs[i].String()+":9")
+		c, err := net.Dial("udp", stdnet.JoinHostPort(addrs[i].String(), "9"))
 		if err == nil {
 			if src, ok := c.LocalAddr().(*stdnet.UDPAddr); ok {
 				srcs[i], _ = netip.AddrFromSlice(src.IP)
