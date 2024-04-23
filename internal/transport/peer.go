@@ -32,7 +32,6 @@
 package transport
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"sync"
@@ -166,9 +165,7 @@ func (peer *Peer) SendBuffers(buffers [][]byte) error {
 }
 
 func (peer *Peer) String() string {
-	base64Key := base64.StdEncoding.EncodeToString(peer.handshake.remoteStatic[:])
-	abbreviatedKey := base64Key[0:4] + "…" + base64Key[39:43]
-	return fmt.Sprintf("peer(%s)", abbreviatedKey)
+	return fmt.Sprintf("peer(%s)", peer.handshake.remoteStatic.ShortString())
 }
 
 func (peer *Peer) Start() {

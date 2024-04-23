@@ -34,6 +34,8 @@ type Config struct {
 	DNSServers []string `yaml:"dnsServers,omitempty" mapstructure:"dnsServers,omitempty"`
 	// Peers is a list of known peers to which we can send and receive packets.
 	Peers []PeerConfig `yaml:"peers,omitempty" mapstructure:"peers,omitempty"`
+	// Routes is the routing table to use for the network.
+	Routes []RouteConfig `yaml:"routes,omitempty" mapstructure:"routes,omitempty"`
 }
 
 // PeerConfig is the configuration for a known wireguard peer.
@@ -48,10 +50,17 @@ type PeerConfig struct {
 	// IPs is a list of IP addresses assigned to the peer, this is optional for gateways.
 	// Traffic with a source IP not in this list will be dropped.
 	IPs []string `yaml:"ips,omitempty" mapstructure:"ips,omitempty"`
-	// DefaultGateway indicates this peer should be used as the default gateway for traffic.
-	DefaultGateway bool `yaml:"defaultGateway,omitempty" mapstructure:"defaultGateway,omitempty"`
-	// GatewayForCIDRs is a list of subnets for which this peer should be used as the gateway.
-	GatewayForCIDRs []string `yaml:"gatewayForCIDRs,omitempty" mapstructure:"gatewayForCIDRs,omitempty"`
+}
+
+// RouteConfig is the configuration for a route in the routing table.
+type RouteConfig struct {
+	// Destinations is a list of CIDR blocks for which this route should be used.
+	// If not specified and Default is set then the default IPv4/IPv6 routes will be used.
+	Destinations []string `yaml:"destinations" mapstructure:"destinations"`
+	// Via is the name of the peer to use as the gateway for this route.
+	Via string `yaml:"via" mapstructure:"via"`
+	// Default indicates this route should be used as the default route.
+	Default bool `yaml:"default,omitempty" mapstructure:"default,omitempty"`
 }
 
 func (c Config) GetKind() string {

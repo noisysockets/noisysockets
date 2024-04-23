@@ -68,7 +68,7 @@ func randTransport(t *testing.T) *Transport {
 		t.Fatal(err)
 	}
 	logger := slogt.New(t)
-	transport := NewTransport(&discardingSink{}, conn.NewStdNetBind(), logger)
+	transport := NewTransport(logger, &discardingSink{}, conn.NewStdNetBind())
 	transport.SetPrivateKey(sk)
 	return transport
 }

@@ -17,12 +17,17 @@ import (
 	"github.com/noisysockets/noisysockets/types"
 )
 
+type gatewayPeer struct {
+	publicKey    types.NoisePublicKey
+	destinations []*stdnet.IPNet
+	isDefault    bool
+}
+
 type peerDirectory struct {
 	peerNames       map[string]types.NoisePublicKey
 	peerAddresses   map[types.NoisePublicKey][]netip.Addr
 	fromPeerAddress map[netip.Addr]types.NoisePublicKey
-	defaultGateway  *types.NoisePublicKey
-	gatewayPeers    map[types.NoisePublicKey][]*stdnet.IPNet
+	gatewayPeers    map[types.NoisePublicKey]gatewayPeer
 }
 
 func newPeerDirectory() *peerDirectory {
@@ -30,12 +35,13 @@ func newPeerDirectory() *peerDirectory {
 		peerNames:       make(map[string]types.NoisePublicKey),
 		peerAddresses:   make(map[types.NoisePublicKey][]netip.Addr),
 		fromPeerAddress: make(map[netip.Addr]types.NoisePublicKey),
-		gatewayPeers:    make(map[types.NoisePublicKey][]*stdnet.IPNet),
+		gatewayPeers:    make(map[types.NoisePublicKey]gatewayPeer),
 	}
 }
 
-func (pd *peerDirectory) addPeer(name string, pk types.NoisePublicKey, addrs []netip.Addr,
-	defaultGateway bool, gatewayForCIDRs []*stdnet.IPNet) error {
+func (pd *peerDirectory) addPeer(name string, pk types.NoisePublicKey, addrs []netip.Addr) error {
+	pd.peerNames[pk.String()] = pk
+
 	if name != "" {
 		pd.peerNames[name] = pk
 	}
@@ -49,23 +55,30 @@ func (pd *peerDirectory) addPeer(name string, pk types.NoisePublicKey, addrs []n
 		pd.fromPeerAddress[addr] = pk
 	}
 
-	if defaultGateway {
-		pd.defaultGateway = &pk
-		pd.gatewayPeers[pk] = []*stdnet.IPNet{
-			{
-				IP:   stdnet.IPv4zero,
-				Mask: stdnet.CIDRMask(0, 32),
-			},
-			{
-				IP:   stdnet.IPv6zero,
-				Mask: stdnet.CIDRMask(0, 128),
-			},
+	return nil
+}
+
+func (pd *peerDirectory) addGateway(pk types.NoisePublicKey, destinations []*stdnet.IPNet, isDefault bool) error {
+	if gwPeer, ok := pd.gatewayPeers[pk]; ok {
+		gwPeer.destinations = dedupNetworks(append(gwPeer.destinations, destinations...))
+		if isDefault {
+			gwPeer.isDefault = true
 		}
-	} else if len(gatewayForCIDRs) > 0 {
-		pd.gatewayPeers[pk] = gatewayForCIDRs
+		pd.gatewayPeers[pk] = gwPeer
+	} else {
+		pd.gatewayPeers[pk] = gatewayPeer{
+			publicKey:    pk,
+			destinations: dedupNetworks(destinations),
+			isDefault:    isDefault,
+		}
 	}
 
 	return nil
+}
+
+func (pd *peerDirectory) lookupPeerByName(name string) (types.NoisePublicKey, bool) {
+	pk, ok := pd.peerNames[name]
+	return pk, ok
 }
 
 func (pd *peerDirectory) lookupPeerAddressesByName(name string) ([]netip.Addr, bool) {
@@ -83,10 +96,10 @@ func (pd *peerDirectory) lookupPeerByAddress(addr netip.Addr) (types.NoisePublic
 }
 
 func (pd *peerDirectory) gatewayForAddress(addr netip.Addr) (pk types.NoisePublicKey, ok bool) {
-	for pk, subnets := range pd.gatewayPeers {
-		for _, subnet := range subnets {
-			if subnet.Contains(stdnet.IP(addr.AsSlice())) {
-				return pk, true
+	for _, gwPeer := range pd.gatewayPeers {
+		for _, destination := range gwPeer.destinations {
+			if destination.Contains(stdnet.IP(addr.AsSlice())) {
+				return gwPeer.publicKey, true
 			}
 		}
 	}
@@ -94,19 +107,33 @@ func (pd *peerDirectory) gatewayForAddress(addr netip.Addr) (pk types.NoisePubli
 	return
 }
 
-func (pd *peerDirectory) forEachGateway(f func(addrs []netip.Addr, subnets []*stdnet.IPNet, defaultGateway bool) error) error {
-	for pk, subnets := range pd.gatewayPeers {
-		addrs, ok := pd.peerAddresses[pk]
+func (pd *peerDirectory) forEachGateway(f func(addrs []netip.Addr, destinations []*stdnet.IPNet, isDefault bool) error) error {
+	for _, gwPeer := range pd.gatewayPeers {
+		addrs, ok := pd.peerAddresses[gwPeer.publicKey]
 		if !ok {
-			return fmt.Errorf("could not find addresses for gateway peer: %s", pk)
+			return fmt.Errorf("could not find addresses for gateway peer: %s", gwPeer.publicKey)
 		}
 
-		defaultGateway := pd.defaultGateway != nil && *pd.defaultGateway == pk
-
-		if err := f(addrs, subnets, defaultGateway); err != nil {
+		if err := f(addrs, gwPeer.destinations, gwPeer.isDefault); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func dedupNetworks(networks []*stdnet.IPNet) []*stdnet.IPNet {
+	seen := make(map[string]struct{})
+	var deduped []*stdnet.IPNet
+	for _, net := range networks {
+		key := net.String()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+
+		seen[key] = struct{}{}
+		deduped = append(deduped, net)
+	}
+
+	return deduped
 }

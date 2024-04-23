@@ -306,7 +306,7 @@ func (transport *Transport) SetPrivateKey(sk types.NoisePrivateKey) {
 	}
 }
 
-func NewTransport(sourceSink SourceSink, bind conn.Bind, logger *slog.Logger) *Transport {
+func NewTransport(logger *slog.Logger, sourceSink SourceSink, bind conn.Bind) *Transport {
 	t := new(Transport)
 	t.state.state.Store(uint32(transportStateDown))
 	t.closed = make(chan struct{})

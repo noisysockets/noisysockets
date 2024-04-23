@@ -46,6 +46,7 @@ import (
 
 	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/netstack/pkg/tcpip/adapters/gonet"
+	"github.com/noisysockets/netstack/pkg/tcpip/header"
 	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv4"
 	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv6"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
@@ -74,8 +75,9 @@ var (
 var protoSplitter = regexp.MustCompile(`^(tcp|udp)(4|6)?$`)
 
 type NoisySocketsNetwork struct {
-	transport    *transport.Transport
+	logger       *slog.Logger
 	pd           *peerDirectory
+	transport    *transport.Transport
 	stack        *stack.Stack
 	localAddrs   []netip.Addr
 	dnsServers   []netip.AddrPort
@@ -91,149 +93,90 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 
-	var localAddrs []netip.Addr
-	for _, ip := range conf.IPs {
-		addr, err := netip.ParseAddr(ip)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse address: %w", err)
-		}
-		localAddrs = append(localAddrs, addr)
+	publicKey := privateKey.PublicKey()
+
+	logger = logger.With(slog.String("id", publicKey.ShortString()))
+
+	net := &NoisySocketsNetwork{
+		logger: logger,
+		pd:     newPeerDirectory(),
+		stack: stack.New(stack.Options{
+			NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
+			TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol, icmp.NewProtocol4, icmp.NewProtocol6},
+			HandleLocal:        true,
+		}),
 	}
 
-	pd := newPeerDirectory()
+	// Parse local addresses.
+	var err error
+	net.localAddrs, err = parseIPList(conf.IPs)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse local addresses: %w", err)
+	}
+
+	// What IP versions are we using?
+	for _, addr := range net.localAddrs {
+		if addr.Is4() {
+			net.hasV4 = true
+		} else if addr.Is6() {
+			net.hasV6 = true
+		}
+	}
 
 	// Add the local node to the peer directory.
-	if err := pd.addPeer(conf.Name, privateKey.PublicKey(), localAddrs, false, nil); err != nil {
+	hostname := conf.Name
+	if hostname == "" {
+		hostname = "localhost"
+	}
+
+	if err := net.pd.addPeer(hostname, publicKey, net.localAddrs); err != nil {
 		return nil, fmt.Errorf("could not add local peer to directory: %w", err)
 	}
 
-	var dnsServers []netip.AddrPort
-	for _, addr := range conf.DNSServers {
-		var dnsServer netip.AddrPort
-
-		// Do we have a port specified?
-		if _, _, err := stdnet.SplitHostPort(addr); err == nil {
-			dnsServer, err = netip.ParseAddrPort(addr)
-			if err != nil {
-				return nil, fmt.Errorf("could not parse DNS server address: %w", err)
-			}
-		} else {
-			addr, err := netip.ParseAddr(addr)
-			if err != nil {
-				return nil, fmt.Errorf("could not parse DNS server address: %w", err)
-			}
-
-			dnsServer = netip.AddrPortFrom(addr, 0)
-		}
-
-		dnsServers = append(dnsServers, dnsServer)
+	net.dnsServers, err = parseIPPortList(conf.DNSServers)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse DNS servers: %w", err)
 	}
 
-	var hasV4, hasV6 bool
-	for _, addr := range localAddrs {
-		if addr.Is4() {
-			hasV4 = true
-		} else if addr.Is6() {
-			hasV6 = true
-		}
-	}
-
-	s := stack.New(stack.Options{
-		NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
-		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol, icmp.NewProtocol4, icmp.NewProtocol6},
-		HandleLocal:        true,
-	})
-
-	sourceSink, err := newSourceSink(logger, pd, s, localAddrs)
+	sourceSink, err := newSourceSink(logger, net.pd, net.stack, net.localAddrs)
 	if err != nil {
 		return nil, fmt.Errorf("could not create source sink: %w", err)
 	}
 
-	t := transport.NewTransport(sourceSink, conn.NewStdNetBind(), logger)
+	net.transport = transport.NewTransport(logger, sourceSink, conn.NewStdNetBind())
 
-	t.SetPrivateKey(privateKey)
+	net.transport.SetPrivateKey(privateKey)
 
-	if err := t.UpdatePort(conf.ListenPort); err != nil {
+	if err := net.transport.UpdatePort(conf.ListenPort); err != nil {
 		return nil, fmt.Errorf("failed to update port: %w", err)
 	}
 
+	// Add peers.
 	for _, peerConf := range conf.Peers {
-		var peerPublicKey types.NoisePublicKey
-		if err := peerPublicKey.FromString(peerConf.PublicKey); err != nil {
-			return nil, fmt.Errorf("failed to parse peer public key: %w", err)
+		if err := net.AddPeer(peerConf); err != nil {
+			return nil, fmt.Errorf("could not add peer %s: %w", peerConf.Name, err)
 		}
-
-		var peerAddrs []netip.Addr
-		for _, ip := range peerConf.IPs {
-			addr, err := netip.ParseAddr(ip)
-			if err != nil {
-				return nil, fmt.Errorf("could not parse peer address %q: %v", ip, err)
-			}
-			peerAddrs = append(peerAddrs, addr)
-		}
-
-		var gatewayForCIDRs []*stdnet.IPNet
-		for _, cidr := range peerConf.GatewayForCIDRs {
-			_, subnet, err := stdnet.ParseCIDR(cidr)
-			if err != nil {
-				return nil, fmt.Errorf("could not parse CIDR %q: %v", cidr, err)
-			}
-			gatewayForCIDRs = append(gatewayForCIDRs, subnet)
-		}
-
-		if err := pd.addPeer(peerConf.Name, peerPublicKey, peerAddrs, peerConf.DefaultGateway, gatewayForCIDRs); err != nil {
-			return nil, fmt.Errorf("failed to add peer %s to directory: %w", peerConf.Name, err)
-		}
-
-		peer, err := t.NewPeer(peerPublicKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create peer: %w", err)
-		}
-
-		// Regularly send keepalives to the peer to keep NAT mappings valid.
-		// This could be configurable but I think it's a good default to avoid footguns.
-		peer.SetKeepAliveInterval(25 * time.Second)
-
-		if peerConf.Endpoint != "" {
-			peerEndpointHost, peerEndpointPortStr, err := stdnet.SplitHostPort(peerConf.Endpoint)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse peer endpoint: %w", err)
-			}
-
-			peerEndpointAddrs, err := stdnet.LookupHost(peerEndpointHost)
-			if err != nil {
-				return nil, fmt.Errorf("failed to resolve peer address: %w", err)
-			}
-
-			peerEndpointPort, err := strconv.Atoi(peerEndpointPortStr)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse peer port: %w", err)
-			}
-
-			peer.SetEndpoint(&conn.StdNetEndpoint{
-				AddrPort: netip.AddrPortFrom(netip.MustParseAddr(peerEndpointAddrs[0]), uint16(peerEndpointPort)),
-			})
-
-			if err := peer.SendKeepalive(); err != nil {
-				logger.Warn("Failed to send initial keepalive", "peer", peerConf.Name, "error", err)
-			}
-		}
-
 	}
 
-	if err := t.Up(); err != nil {
+	// Add routes.
+	for _, routeConf := range conf.Routes {
+		if err := net.AddRoute(routeConf); err != nil {
+			return nil, fmt.Errorf("could not add route: %w", err)
+		}
+	}
+
+	// Refresh addresses and routes.
+	if err := net.refreshAddressesAndRoutes(); err != nil {
+		return nil, fmt.Errorf("could not refresh addresses and routes: %w", err)
+	}
+
+	logger.Debug("Bringing transport up")
+
+	if err := net.transport.Up(); err != nil {
 		return nil, fmt.Errorf("failed to bring transport up: %w", err)
 	}
 
-	return &NoisySocketsNetwork{
-		transport:  t,
-		pd:         pd,
-		stack:      s,
-		localAddrs: localAddrs,
-		dnsServers: dnsServers,
-		hasV4:      hasV4,
-		hasV6:      hasV6,
-	}, nil
+	return net, nil
 }
 
 func (net *NoisySocketsNetwork) Close() error {
@@ -513,9 +456,110 @@ func (net *NoisySocketsNetwork) ListenPacket(network, address string) (stdnet.Pa
 	return &packetConn{PacketConn: pc, pd: net.pd}, nil
 }
 
-// KnownPeers returns a list of all known peers.
-func (net *NoisySocketsNetwork) KnownPeers() []types.NoisePublicKey {
-	return net.transport.Peers()
+// AddPeer adds a wireguard peer to the network.
+func (net *NoisySocketsNetwork) AddPeer(peerConf v1alpha1.PeerConfig) error {
+	var peerPublicKey types.NoisePublicKey
+	if err := peerPublicKey.FromString(peerConf.PublicKey); err != nil {
+		return fmt.Errorf("failed to parse peer public key: %w", err)
+	}
+
+	net.logger.Debug("Adding peer",
+		slog.String("name", peerConf.Name),
+		slog.String("peer", peerPublicKey.ShortString()))
+
+	var peerAddrs []netip.Addr
+	for _, ip := range peerConf.IPs {
+		addr, err := netip.ParseAddr(ip)
+		if err != nil {
+			return fmt.Errorf("could not parse peer address %q: %v", ip, err)
+		}
+		peerAddrs = append(peerAddrs, addr)
+	}
+
+	if err := net.pd.addPeer(peerConf.Name, peerPublicKey, peerAddrs); err != nil {
+		return fmt.Errorf("failed to add peer %s to directory: %w", peerConf.Name, err)
+	}
+
+	peer, err := net.transport.NewPeer(peerPublicKey)
+	if err != nil {
+		return fmt.Errorf("failed to create peer: %w", err)
+	}
+
+	// Regularly send keepalives to the peer to keep NAT mappings valid.
+	// This could be configurable but I think it's a good default to avoid footguns.
+	peer.SetKeepAliveInterval(25 * time.Second)
+
+	if peerConf.Endpoint != "" {
+		peerEndpointHost, peerEndpointPortStr, err := stdnet.SplitHostPort(peerConf.Endpoint)
+		if err != nil {
+			return fmt.Errorf("failed to parse peer endpoint: %w", err)
+		}
+
+		peerEndpointAddrs, err := stdnet.LookupHost(peerEndpointHost)
+		if err != nil {
+			return fmt.Errorf("failed to resolve peer address: %w", err)
+		}
+
+		peerEndpointPort, err := strconv.Atoi(peerEndpointPortStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse peer port: %w", err)
+		}
+
+		peer.SetEndpoint(&conn.StdNetEndpoint{
+			AddrPort: netip.AddrPortFrom(netip.MustParseAddr(peerEndpointAddrs[0]), uint16(peerEndpointPort)),
+		})
+
+		peer.Start()
+
+		if err := peer.SendKeepalive(); err != nil {
+			net.logger.Warn("Failed to send initial keepalive", "peer", peerConf.Name, "error", err)
+		}
+	}
+
+	return nil
+}
+
+// AddRoute adds a routing table entry for the network.
+func (net *NoisySocketsNetwork) AddRoute(routeConf v1alpha1.RouteConfig) error {
+	net.logger.Debug("Adding route",
+		slog.Any("destinations", routeConf.Destinations),
+		slog.String("via", routeConf.Via),
+		slog.Bool("default", routeConf.Default))
+
+	pk, ok := net.pd.lookupPeerByName(routeConf.Via)
+	if !ok {
+		return fmt.Errorf("unknown peer %s", routeConf.Via)
+	}
+
+	var destinations []*stdnet.IPNet
+	if len(routeConf.Destinations) > 0 {
+		var err error
+		destinations, err = parseCIDRList(routeConf.Destinations)
+		if err != nil {
+			return fmt.Errorf("could not parse destinations: %w", err)
+		}
+	} else if routeConf.Default {
+		// Use the default route.
+		if net.hasV4 {
+			destinations = append(destinations, &stdnet.IPNet{
+				IP:   stdnet.IPv4zero,
+				Mask: stdnet.CIDRMask(0, 32),
+			})
+		}
+		if net.hasV6 {
+			destinations = append(destinations, &stdnet.IPNet{
+				IP:   stdnet.IPv6zero,
+				Mask: stdnet.CIDRMask(0, 128),
+			})
+		}
+	}
+
+	if err := net.pd.addGateway(pk, destinations, routeConf.Default); err != nil {
+		return fmt.Errorf("could not add gateway: %w", err)
+	}
+
+	// Load the updated routing table.
+	return net.refreshAddressesAndRoutes()
 }
 
 // GetPeerEndpoint returns the public address/endpoint of a peer (if known).
@@ -541,6 +585,136 @@ func (net *NoisySocketsNetwork) SetPeerEndpoint(pk types.NoisePublicKey, endpoin
 	}
 
 	peer.SetEndpoint(&conn.StdNetEndpoint{AddrPort: endpoint})
+
+	return nil
+}
+
+func (net *NoisySocketsNetwork) refreshAddressesAndRoutes() error {
+	net.logger.Debug("Refreshing addresses and routes")
+
+	currentLocalAddrs := make(map[netip.Addr]bool)
+	for _, addr := range net.localAddrs {
+		currentLocalAddrs[addr] = true
+	}
+
+	existingLocalAddrs := make(map[netip.Addr]bool)
+	for _, addr := range net.stack.AllAddresses()[1] {
+		netipAddr, ok := netip.AddrFromSlice(addr.AddressWithPrefix.Address.AsSlice())
+		if !ok {
+			continue
+		}
+
+		existingLocalAddrs[netipAddr] = true
+	}
+
+	// Remove any addresses that are no longer in the configuration.
+	for addr := range existingLocalAddrs {
+		if _, ok := currentLocalAddrs[addr]; !ok {
+			net.logger.Debug("Removing local address", slog.String("address", addr.String()))
+
+			if err := net.stack.RemoveAddress(1, tcpip.AddrFromSlice(addr.AsSlice())); err != nil {
+				return fmt.Errorf("could not remove existing address: %v", err)
+			}
+		}
+	}
+
+	for _, addr := range net.localAddrs {
+		if _, ok := existingLocalAddrs[addr]; !ok {
+			var protoNumber tcpip.NetworkProtocolNumber
+			if addr.Is4() {
+				protoNumber = ipv4.ProtocolNumber
+			} else if addr.Is6() {
+				protoNumber = ipv6.ProtocolNumber
+			}
+
+			protoAddr := tcpip.ProtocolAddress{
+				Protocol:          protoNumber,
+				AddressWithPrefix: tcpip.AddrFromSlice(addr.AsSlice()).WithPrefix(),
+			}
+
+			net.logger.Debug("Adding local address", slog.String("address", addr.String()))
+
+			if err := net.stack.AddProtocolAddress(1, protoAddr, stack.AddressProperties{}); err != nil {
+				return fmt.Errorf("could not add address: %v", err)
+			}
+		}
+	}
+
+	var explicitDefaultGateway bool
+	var routes []tcpip.Route
+
+	err := net.pd.forEachGateway(func(addrs []netip.Addr, destinations []*stdnet.IPNet, isDefault bool) error {
+		if isDefault {
+			explicitDefaultGateway = true
+		}
+
+		net.logger.Debug("Adding gateway route",
+			slog.Any("addrs", addrs),
+			slog.Any("destinations", destinations),
+			slog.Bool("default", isDefault))
+
+		var addrV4, addrV6 tcpip.Address
+		for _, addr := range addrs {
+			if net.hasV4 && addr.Is4() {
+				addrV4 = tcpip.AddrFromSlice(addr.AsSlice())
+			} else if net.hasV6 && addr.Is6() {
+				addrV6 = tcpip.AddrFromSlice(addr.AsSlice())
+			}
+		}
+
+		for _, destination := range destinations {
+			if net.hasV4 && destination.IP.To4() != nil {
+				dstNetwork, err := tcpip.NewSubnet(tcpip.AddrFrom4Slice(destination.IP.To4()), tcpip.MaskFromBytes(destination.Mask))
+				if err != nil {
+					return fmt.Errorf("could not parse ipv4 subnet: %v", err)
+				}
+
+				routes = append(routes, tcpip.Route{
+					NIC:         1,
+					Destination: dstNetwork,
+					Gateway:     addrV4,
+				})
+			} else if net.hasV6 && destination.IP.To16() != nil {
+				dstNetwork, err := tcpip.NewSubnet(tcpip.AddrFrom16Slice(destination.IP.To16()), tcpip.MaskFromBytes(destination.Mask))
+				if err != nil {
+					return fmt.Errorf("could not parse ipv6 subnet: %v", err)
+				}
+
+				routes = append(routes, tcpip.Route{
+					NIC:         1,
+					Destination: dstNetwork,
+					Gateway:     addrV6,
+				})
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("could not add gateway routes: %v", err)
+	}
+
+	// Add a dummy default route if no default gateway was specified.
+	if !explicitDefaultGateway {
+		net.logger.Debug("Adding dummy default route")
+
+		if net.hasV4 {
+			routes = append(routes, tcpip.Route{
+				NIC:         1,
+				Destination: header.IPv4EmptySubnet,
+			})
+		}
+		if net.hasV6 {
+			routes = append(routes, tcpip.Route{
+				NIC:         1,
+				Destination: header.IPv6EmptySubnet,
+			})
+		}
+	}
+
+	net.logger.Debug("Updating routing table", slog.Any("routes", routes))
+
+	net.stack.SetRouteTable(routes)
 
 	return nil
 }

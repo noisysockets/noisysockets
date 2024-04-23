@@ -47,19 +47,22 @@ func TestValidateSourceAddress(t *testing.T) {
 	err = pd.addPeer("gw", gwPK, []netip.Addr{
 		netip.MustParseAddr("192.168.1.1"),
 		netip.MustParseAddr("2001:db8::1"),
-	}, false, []*stdnet.IPNet{ipv4Net, ipv6Net})
+	})
+	require.NoError(t, err)
+
+	err = pd.addGateway(gwPK, []*stdnet.IPNet{ipv4Net, ipv6Net}, false)
 	require.NoError(t, err)
 
 	err = pd.addPeer("peer1", peer1PK, []netip.Addr{
 		netip.MustParseAddr("192.168.1.2"),
 		netip.MustParseAddr("2001:db8::2"),
-	}, false, nil)
+	})
 	require.NoError(t, err)
 
 	err = pd.addPeer("peer2", peer2PK, []netip.Addr{
 		netip.MustParseAddr("192.168.1.3"),
 		netip.MustParseAddr("2001:db8::3"),
-	}, false, nil)
+	})
 	require.NoError(t, err)
 
 	ss := sourceSink{

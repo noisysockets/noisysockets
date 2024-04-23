@@ -42,8 +42,6 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/netstack/pkg/tcpip/header"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/channel"
-	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv4"
-	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv6"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/transport"
@@ -84,10 +82,6 @@ func newSourceSink(logger *slog.Logger, pd *peerDirectory, s *stack.Stack, local
 		return nil, fmt.Errorf("could not create NIC: %v", err)
 	}
 
-	if err := ss.setupAddressesAndRoutes(); err != nil {
-		return nil, fmt.Errorf("could not set up addresses and routes: %w", err)
-	}
-
 	return ss, nil
 }
 
@@ -126,15 +120,24 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []types.Nois
 			return fmt.Errorf("unknown network protocol: %w", syscall.EAFNOSUPPORT)
 		}
 
+		logger := ss.logger.With(slog.String("address", peerAddr.String()))
+
 		var ok bool
 		destinations[idx], ok = ss.pd.lookupPeerByAddress(peerAddr)
 		if !ok {
 			// Do we perhaps have a gateway for this address?
 			destinations[idx], ok = ss.pd.gatewayForAddress(peerAddr)
 			if !ok {
-				return fmt.Errorf("unknown destination address %w", syscall.EADDRNOTAVAIL)
+				return fmt.Errorf("unknown destination address")
 			}
+
+			logger.Debug("Using gateway",
+				slog.String("gateway", destinations[idx].ShortString()))
 		}
+
+		logger = logger.With(slog.String("destination", destinations[idx].ShortString()))
+
+		logger.Debug("Sending packet")
 
 		view := pkt.ToView()
 		n, err := view.Read(bufs[idx][offset:])
@@ -187,6 +190,8 @@ func (ss *sourceSink) Write(bufs [][]byte, sources []types.NoisePublicKey, offse
 			continue
 		}
 
+		ss.logger.Debug("Received packet")
+
 		// Validate the source address (to prevent spoofing).
 		protocolNumber, err := ss.validateSourceAddress(buf[offset:], sources[i])
 		if err != nil {
@@ -212,104 +217,6 @@ func (ss *sourceSink) WriteNotify() {
 	}
 
 	ss.incoming <- pkt
-}
-
-// setupAddressesAndRoutes sets up the addresses and routes for a NIC.
-func (ss *sourceSink) setupAddressesAndRoutes() error {
-	var hasV4, hasV6 bool
-	for _, addr := range ss.localAddrs {
-		var protoNumber tcpip.NetworkProtocolNumber
-		if addr.Is4() {
-			protoNumber = ipv4.ProtocolNumber
-		} else if addr.Is6() {
-			protoNumber = ipv6.ProtocolNumber
-		}
-
-		protoAddr := tcpip.ProtocolAddress{
-			Protocol:          protoNumber,
-			AddressWithPrefix: tcpip.AddrFromSlice(addr.AsSlice()).WithPrefix(),
-		}
-
-		if err := ss.stack.AddProtocolAddress(1, protoAddr, stack.AddressProperties{}); err != nil {
-			return fmt.Errorf("could not add protocol address: %v", err)
-		}
-		if addr.Is4() {
-			hasV4 = true
-		} else if addr.Is6() {
-			hasV6 = true
-		}
-	}
-
-	var addedDefaultGateway bool
-	var routes []tcpip.Route
-
-	err := ss.pd.forEachGateway(func(addrs []netip.Addr, subnets []*net.IPNet, defaultGateway bool) error {
-		if defaultGateway {
-			addedDefaultGateway = true
-		}
-
-		var addrV4, addrV6 tcpip.Address
-		for _, addr := range addrs {
-			if hasV4 && addr.Is4() {
-				addrV4 = tcpip.AddrFromSlice(addr.AsSlice())
-			} else if hasV6 && addr.Is6() {
-				addrV6 = tcpip.AddrFromSlice(addr.AsSlice())
-			}
-		}
-
-		for _, subnet := range subnets {
-			if hasV4 && subnet.IP.To4() != nil {
-				dstNetwork, err := tcpip.NewSubnet(tcpip.AddrFrom4Slice(subnet.IP.To4()), tcpip.MaskFromBytes(subnet.Mask))
-				if err != nil {
-					return fmt.Errorf("could not parse ipv4 subnet: %v", err)
-				}
-
-				routes = append(routes, tcpip.Route{
-					NIC:         1,
-					Destination: dstNetwork,
-					Gateway:     addrV4,
-				})
-			} else if hasV6 && subnet.IP.To16() != nil {
-				dstNetwork, err := tcpip.NewSubnet(tcpip.AddrFrom16Slice(subnet.IP.To16()), tcpip.MaskFromBytes(subnet.Mask))
-				if err != nil {
-					return fmt.Errorf("could not parse ipv6 subnet: %v", err)
-				}
-
-				routes = append(routes, tcpip.Route{
-					NIC:         1,
-					Destination: dstNetwork,
-					Gateway:     addrV6,
-				})
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("could not add gateway routes: %v", err)
-	}
-
-	// Add a dummy default route if no default gateway was specified.
-	if !addedDefaultGateway {
-		if hasV4 {
-			routes = append(routes, tcpip.Route{
-				NIC:         1,
-				Destination: header.IPv4EmptySubnet,
-			})
-		}
-		if hasV6 {
-			routes = append(routes, tcpip.Route{
-				NIC:         1,
-				Destination: header.IPv6EmptySubnet,
-			})
-		}
-	}
-
-	for _, route := range routes {
-		ss.stack.AddRoute(route)
-	}
-
-	return nil
 }
 
 func (ss *sourceSink) validateSourceAddress(buf []byte, source types.NoisePublicKey) (tcpip.NetworkProtocolNumber, error) {

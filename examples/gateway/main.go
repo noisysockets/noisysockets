@@ -12,7 +12,7 @@ import (
 
 	"github.com/noisysockets/noisysockets"
 	"github.com/noisysockets/noisysockets/config/v1alpha1"
-	"github.com/noisysockets/noisysockets/examples/internal/gateway"
+	"github.com/noisysockets/noisysockets/examples/util/gateway"
 	"github.com/noisysockets/noisysockets/types"
 )
 
@@ -55,11 +55,16 @@ func main() {
 		DNSServers: []string{"10.0.0.1"},
 		Peers: []v1alpha1.PeerConfig{
 			{
-				Name:           "server",
-				PublicKey:      gatewayPublicKey.String(),
-				Endpoint:       gatewayHostPort,
-				IPs:            []string{"10.0.0.1"},
-				DefaultGateway: true,
+				Name:      "gateway",
+				PublicKey: gatewayPublicKey.String(),
+				Endpoint:  gatewayHostPort,
+				IPs:       []string{"10.0.0.1"},
+			},
+		},
+		Routes: []v1alpha1.RouteConfig{
+			{
+				Via:     "gateway",
+				Default: true,
 			},
 		},
 	})

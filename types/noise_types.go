@@ -113,3 +113,8 @@ func (pk NoisePublicKey) Equals(tar NoisePublicKey) bool {
 func (pk NoisePublicKey) String() string {
 	return base64.StdEncoding.EncodeToString(pk[:])
 }
+
+func (pk NoisePublicKey) ShortString() string {
+	base64Key := base64.StdEncoding.EncodeToString(pk[:])
+	return base64Key[0:4] + "…" + base64Key[39:43]
+}

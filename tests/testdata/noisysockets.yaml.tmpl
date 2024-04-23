@@ -5,10 +5,12 @@ ips:
 - 10.7.0.2
 dnsServers:
 - 10.7.0.1
+routes:
+- via: gateway
+  default: true
 peers:
 - name: gateway
   publicKey: 6cvvZyj+EVL4DHjUKeVF7EUBfgR2mJO4php2Gdv9FVw=
   endpoint: {{ .Endpoint }}
   ips:
   - 10.7.0.1
-  defaultGateway: true
