@@ -51,8 +51,8 @@ func TestCurveWrappers(t *testing.T) {
 	sk2, err := types.NewPrivateKey()
 	assertNil(t, err)
 
-	pk1 := sk1.PublicKey()
-	pk2 := sk2.PublicKey()
+	pk1 := sk1.Public()
+	pk2 := sk2.Public()
 
 	ss1, err1 := sharedSecret(sk1, pk2)
 	ss2, err2 := sharedSecret(sk2, pk1)
@@ -97,11 +97,11 @@ func TestNoiseHandshake(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	})
 
-	peer1, err := trans2.NewPeer(trans1.staticIdentity.privateKey.PublicKey())
+	peer1, err := trans2.NewPeer(trans1.staticIdentity.privateKey.Public())
 	if err != nil {
 		t.Fatal(err)
 	}
-	peer2, err := trans1.NewPeer(trans2.staticIdentity.privateKey.PublicKey())
+	peer2, err := trans1.NewPeer(trans2.staticIdentity.privateKey.Public())
 	if err != nil {
 		t.Fatal(err)
 	}

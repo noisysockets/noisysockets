@@ -28,7 +28,7 @@ func main() {
 	}
 
 	// Get the public key for the gateway peer.
-	gatewayPublicKey := gatewayPrivateKey.PublicKey()
+	gatewayPublicKey := gatewayPrivateKey.Public()
 
 	// Generate keypair for our client peer.
 	clientPrivateKey, err := types.NewPrivateKey()
@@ -39,7 +39,7 @@ func main() {
 
 	// Usually this would be a VPN server running on a remote host. But for the
 	// sake of this example, we'll spin up a local container running WireGuard.
-	gatewayHostPort, stopGateway, err := gateway.Start(ctx, gatewayPrivateKey, clientPrivateKey.PublicKey())
+	gatewayHostPort, stopGateway, err := gateway.Start(ctx, gatewayPrivateKey, clientPrivateKey.Public())
 	if err != nil {
 		logger.Error("Failed to start wireguard gateway", slog.Any("error", err))
 		os.Exit(1)

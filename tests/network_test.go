@@ -27,11 +27,12 @@ import (
 	"github.com/noisysockets/noisysockets"
 	"github.com/noisysockets/noisysockets/config"
 	"github.com/noisysockets/noisysockets/config/v1alpha1"
+	"github.com/noisysockets/noisysockets/network"
 	"github.com/noisysockets/noisysockets/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/network"
+	tnet "github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
@@ -63,7 +64,7 @@ func TestNetwork(t *testing.T) {
 			IPs:        []string{"10.7.0.2"},
 			Peers: []v1alpha1.PeerConfig{
 				{
-					PublicKey: clientPrivateKey.PublicKey().String(),
+					PublicKey: clientPrivateKey.Public().String(),
 					IPs:       []string{"10.7.0.1"},
 				},
 			},
@@ -114,7 +115,7 @@ func TestNetwork(t *testing.T) {
 			IPs:        []string{"10.7.0.3"},
 			Peers: []v1alpha1.PeerConfig{
 				{
-					PublicKey: clientPrivateKey.PublicKey().String(),
+					PublicKey: clientPrivateKey.Public().String(),
 					IPs:       []string{"10.7.0.1"},
 				},
 			},
@@ -168,13 +169,13 @@ func TestNetwork(t *testing.T) {
 		Peers: []v1alpha1.PeerConfig{
 			{
 				Name:      "tcp-server",
-				PublicKey: tcpServerPrivateKey.PublicKey().String(),
+				PublicKey: tcpServerPrivateKey.Public().String(),
 				Endpoint:  "localhost:12345",
 				IPs:       []string{"10.7.0.2"},
 			},
 			{
 				Name:      "udp-server",
-				PublicKey: udpServerPrivateKey.PublicKey().String(),
+				PublicKey: udpServerPrivateKey.Public().String(),
 				Endpoint:  "localhost:12346",
 				IPs:       []string{"10.7.0.3"},
 			}},
@@ -228,12 +229,213 @@ func TestNetwork(t *testing.T) {
 	})
 }
 
+func TestAddAndRemovePeer(t *testing.T) {
+	logger := slogt.New(t)
+
+	clientPrivateKey, err := types.NewPrivateKey()
+	require.NoError(t, err)
+
+	server1PrivateKey, err := types.NewPrivateKey()
+	require.NoError(t, err)
+
+	server2PrivateKey, err := types.NewPrivateKey()
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		cancel()
+
+		// Wait for everything to close.
+		time.Sleep(time.Second)
+	})
+
+	var server1Net, server2Net network.Network
+	go func() {
+		conf := v1alpha1.Config{
+			Name:       "server1",
+			ListenPort: 12345,
+			PrivateKey: server1PrivateKey.String(),
+			IPs:        []string{"10.7.0.2"},
+			Peers: []v1alpha1.PeerConfig{
+				{
+					PublicKey: clientPrivateKey.Public().String(),
+					IPs:       []string{"10.7.0.1"},
+				},
+			},
+		}
+
+		var err error
+		server1Net, err = noisysockets.NewNetwork(logger, &conf)
+		if err != nil {
+			logger.Error("Failed to create server network", "error", err)
+			return
+		}
+		defer server1Net.Close()
+
+		var mux http.ServeMux
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, "Hello from server 1!")
+		})
+
+		srv := &http.Server{
+			Handler: &mux,
+		}
+		defer srv.Close()
+
+		// A little HTTP server.
+		go func() {
+			lis, err := server1Net.Listen("tcp", ":80")
+			if err != nil {
+				logger.Error("Failed to listen", "error", err)
+				return
+			}
+			defer lis.Close()
+
+			t.Log("Server 1 listening on", lis.Addr())
+
+			if err := srv.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("Failed to serve", "error", err)
+				return
+			}
+		}()
+
+		<-ctx.Done()
+
+		_ = srv.Close()
+	}()
+
+	go func() {
+		conf := v1alpha1.Config{
+			Name:       "server2",
+			ListenPort: 12346,
+			PrivateKey: server2PrivateKey.String(),
+			IPs:        []string{"10.7.0.3"},
+			Peers: []v1alpha1.PeerConfig{
+				{
+					PublicKey: clientPrivateKey.Public().String(),
+					IPs:       []string{"10.7.0.1"},
+				},
+			},
+		}
+
+		var err error
+		server2Net, err = noisysockets.NewNetwork(logger, &conf)
+		if err != nil {
+			logger.Error("Failed to create server network", "error", err)
+			return
+		}
+		defer server2Net.Close()
+
+		var mux http.ServeMux
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, "Hello from server 2!")
+		})
+
+		srv := &http.Server{
+			Handler: &mux,
+		}
+		defer srv.Close()
+
+		// A little HTTP server.
+		go func() {
+			lis, err := server2Net.Listen("tcp", ":80")
+			if err != nil {
+				logger.Error("Failed to listen", "error", err)
+				return
+			}
+			defer lis.Close()
+
+			t.Log("Server 2 listening on", lis.Addr())
+
+			if err := srv.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("Failed to serve", "error", err)
+				return
+			}
+		}()
+
+		<-ctx.Done()
+
+		_ = srv.Close()
+	}()
+
+	conf := v1alpha1.Config{
+		Name:       "client",
+		ListenPort: 12347,
+		PrivateKey: clientPrivateKey.String(),
+		IPs:        []string{"10.7.0.1"},
+		Peers: []v1alpha1.PeerConfig{
+			{
+				Name:      "server1",
+				PublicKey: server1PrivateKey.Public().String(),
+				Endpoint:  "localhost:12345",
+				IPs:       []string{"10.7.0.2"},
+			},
+		},
+	}
+
+	net, err := noisysockets.NewNetwork(logger, &conf)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, net.Close())
+	})
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			Dial: net.Dial,
+		},
+	}
+
+	// Wait for servers to start.
+	time.Sleep(time.Second)
+
+	t.Log("Making a request to server 1")
+
+	// Make a request to server 1.
+	resp, err := client.Get("http://server1")
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		require.NoError(t, resp.Body.Close())
+	})
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	t.Log("Adding server 2 and making request")
+
+	// Add server 2.
+	err = net.(*noisysockets.NoisySocketsNetwork).AddPeer(v1alpha1.PeerConfig{
+		Name:      "server2",
+		PublicKey: server2PrivateKey.Public().String(),
+		Endpoint:  "localhost:12346",
+		IPs:       []string{"10.7.0.3"},
+	})
+	require.NoError(t, err)
+
+	resp, err = client.Get("http://server2")
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		require.NoError(t, resp.Body.Close())
+	})
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	t.Log("Removing server 1 and making request")
+
+	// Remove server 1
+	err = net.(*noisysockets.NoisySocketsNetwork).RemovePeer(server2PrivateKey.Public())
+	require.NoError(t, err)
+
+	_, err = client.Get("http://server2")
+	assert.Error(t, err)
+}
+
 func TestWireGuardCompatibility(t *testing.T) {
 	pwd, err := os.Getwd()
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	testNet, err := network.New(ctx, network.WithCheckDuplicate())
+	testNet, err := tnet.New(ctx, tnet.WithCheckDuplicate())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, testNet.Remove(ctx))

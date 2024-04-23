@@ -68,3 +68,19 @@ func parseCIDRList(networks []string) ([]*stdnet.IPNet, error) {
 
 	return cidrs, nil
 }
+
+func dedupNetworks(networks []*stdnet.IPNet) []*stdnet.IPNet {
+	seen := make(map[string]bool)
+	var deduped []*stdnet.IPNet
+	for _, net := range networks {
+		key := net.String()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+
+		seen[key] = true
+		deduped = append(deduped, net)
+	}
+
+	return deduped
+}

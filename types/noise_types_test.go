@@ -53,7 +53,7 @@ func TestNoisePublicKeyEncoding(t *testing.T) {
 	sk, err := NewPrivateKey()
 	require.NoError(t, err)
 
-	pk1 := sk.PublicKey()
+	pk1 := sk.Public()
 
 	encoded := pk1.String()
 

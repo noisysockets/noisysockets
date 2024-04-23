@@ -58,7 +58,7 @@ var (
 
 type sourceSink struct {
 	logger       *slog.Logger
-	pd           *peerDirectory
+	peers        *peerList
 	stack        *stack.Stack
 	ep           *channel.Endpoint
 	notifyHandle *channel.NotificationHandle
@@ -66,10 +66,10 @@ type sourceSink struct {
 	localAddrs   []netip.Addr
 }
 
-func newSourceSink(logger *slog.Logger, pd *peerDirectory, s *stack.Stack, localAddrs []netip.Addr) (*sourceSink, error) {
+func newSourceSink(logger *slog.Logger, peers *peerList, s *stack.Stack, localAddrs []netip.Addr) (*sourceSink, error) {
 	ss := &sourceSink{
 		logger:     logger,
-		pd:         pd,
+		peers:      peers,
 		stack:      s,
 		ep:         channel.New(queueSize, uint32(transport.DefaultMTU), ""),
 		incoming:   make(chan *stack.PacketBuffer),
@@ -88,9 +88,10 @@ func newSourceSink(logger *slog.Logger, pd *peerDirectory, s *stack.Stack, local
 func (ss *sourceSink) Close() error {
 	ss.ep.RemoveNotify(ss.notifyHandle)
 	ss.ep.Close()
-	close(ss.incoming)
 
 	ss.stack.RemoveNIC(1)
+
+	close(ss.incoming)
 
 	return nil
 }
@@ -122,20 +123,13 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []types.Nois
 
 		logger := ss.logger.With(slog.String("address", peerAddr.String()))
 
-		var ok bool
-		destinations[idx], ok = ss.pd.lookupPeerByAddress(peerAddr)
+		dstPeer, ok := ss.peers.lookupByAddress(peerAddr)
 		if !ok {
-			// Do we perhaps have a gateway for this address?
-			destinations[idx], ok = ss.pd.gatewayForAddress(peerAddr)
-			if !ok {
-				return fmt.Errorf("unknown destination address")
-			}
-
-			logger.Debug("Using gateway",
-				slog.String("gateway", destinations[idx].ShortString()))
+			return fmt.Errorf("unknown destination address")
 		}
+		destinations[idx] = dstPeer.publicKey
 
-		logger = logger.With(slog.String("destination", destinations[idx].ShortString()))
+		logger = logger.With(slog.String("destination", destinations[idx].DisplayString()))
 
 		logger.Debug("Sending packet")
 
@@ -230,7 +224,7 @@ func (ss *sourceSink) validateSourceAddress(buf []byte, source types.NoisePublic
 		return 0, fmt.Errorf("unknown IP version: %w", syscall.EAFNOSUPPORT)
 	}
 
-	var peerAddr netip.Addr
+	var addr netip.Addr
 	switch protocolNumber {
 	case header.IPv4ProtocolNumber:
 		hdr := header.IPv4(buf)
@@ -238,28 +232,24 @@ func (ss *sourceSink) validateSourceAddress(buf []byte, source types.NoisePublic
 			return protocolNumber, fmt.Errorf("invalid IPv4 header")
 		}
 
-		peerAddr = netip.AddrFrom4(hdr.SourceAddress().As4())
+		addr = netip.AddrFrom4(hdr.SourceAddress().As4())
 	case header.IPv6ProtocolNumber:
 		hdr := header.IPv6(buf)
 		if !hdr.IsValid(len(buf)) {
 			return protocolNumber, fmt.Errorf("invalid IPv6 header")
 		}
 
-		peerAddr = netip.AddrFrom16(hdr.SourceAddress().As16())
+		addr = netip.AddrFrom16(hdr.SourceAddress().As16())
 	default:
 		return protocolNumber, fmt.Errorf("unknown network protocol: %w", syscall.EAFNOSUPPORT)
 	}
 
-	pk, ok := ss.pd.lookupPeerByAddress(peerAddr)
+	srcPeer, ok := ss.peers.lookupByAddress(addr)
 	if !ok {
-		// Gateways are not allowed to impersonate known peers.
-		pk, ok = ss.pd.gatewayForAddress(peerAddr)
-		if !ok {
-			return protocolNumber, fmt.Errorf("unknown source address: %w", syscall.EADDRNOTAVAIL)
-		}
+		return protocolNumber, fmt.Errorf("unknown source address")
 	}
 
-	if pk != source {
+	if !srcPeer.publicKey.Equals(source) {
 		return protocolNumber, fmt.Errorf("invalid source address for peer")
 	}
 

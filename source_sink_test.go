@@ -24,19 +24,19 @@ func TestValidateSourceAddress(t *testing.T) {
 	gwSK, err := types.NewPrivateKey()
 	require.NoError(t, err)
 
-	gwPK := gwSK.PublicKey()
+	gwPK := gwSK.Public()
 
 	peer1SK, err := types.NewPrivateKey()
 	require.NoError(t, err)
 
-	peer1PK := peer1SK.PublicKey()
+	peer1PK := peer1SK.Public()
 
 	peer2SK, err := types.NewPrivateKey()
 	require.NoError(t, err)
 
-	peer2PK := peer2SK.PublicKey()
+	peer2PK := peer2SK.Public()
 
-	pd := newPeerDirectory()
+	peers := newPeerList()
 
 	_, ipv4Net, err := stdnet.ParseCIDR("192.168.2.0/24")
 	require.NoError(t, err)
@@ -44,29 +44,37 @@ func TestValidateSourceAddress(t *testing.T) {
 	_, ipv6Net, err := stdnet.ParseCIDR("2001:db9::/64")
 	require.NoError(t, err)
 
-	err = pd.addPeer("gw", gwPK, []netip.Addr{
-		netip.MustParseAddr("192.168.1.1"),
-		netip.MustParseAddr("2001:db8::1"),
+	peers.add(&peer{
+		name:      "gw",
+		publicKey: gwPK,
+		addrs: []netip.Addr{
+			netip.MustParseAddr("192.168.1.1"),
+			netip.MustParseAddr("2001:db8::1"),
+		},
+		destinations: []*stdnet.IPNet{ipv4Net, ipv6Net},
+	})
+
+	peers.add(&peer{
+		name:      "peer1",
+		publicKey: peer1PK,
+		addrs: []netip.Addr{
+			netip.MustParseAddr("192.168.1.2"),
+			netip.MustParseAddr("2001:db8::2"),
+		},
 	})
 	require.NoError(t, err)
 
-	err = pd.addGateway(gwPK, []*stdnet.IPNet{ipv4Net, ipv6Net}, false)
-	require.NoError(t, err)
-
-	err = pd.addPeer("peer1", peer1PK, []netip.Addr{
-		netip.MustParseAddr("192.168.1.2"),
-		netip.MustParseAddr("2001:db8::2"),
+	peers.add(&peer{
+		name:      "peer2",
+		publicKey: peer2PK,
+		addrs: []netip.Addr{
+			netip.MustParseAddr("192.168.1.3"),
+			netip.MustParseAddr("2001:db8::3"),
+		},
 	})
-	require.NoError(t, err)
-
-	err = pd.addPeer("peer2", peer2PK, []netip.Addr{
-		netip.MustParseAddr("192.168.1.3"),
-		netip.MustParseAddr("2001:db8::3"),
-	})
-	require.NoError(t, err)
 
 	ss := sourceSink{
-		pd: pd,
+		peers: peers,
 	}
 
 	t.Run("Valid (IPv4)", func(t *testing.T) {

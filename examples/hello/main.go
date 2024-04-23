@@ -43,7 +43,7 @@ func main() {
 		Peers: []v1alpha1.PeerConfig{
 			{
 				Name:      "client1",
-				PublicKey: clientPrivateKey.PublicKey().String(),
+				PublicKey: clientPrivateKey.Public().String(),
 				IPs:       []string{"10.0.0.2"},
 			},
 		},
@@ -62,7 +62,7 @@ func main() {
 		Peers: []v1alpha1.PeerConfig{
 			{
 				Name:      "server",
-				PublicKey: serverPrivateKey.PublicKey().String(),
+				PublicKey: serverPrivateKey.Public().String(),
 				IPs:       []string{"10.0.0.1"},
 				// This endpoint address corresponds to the server's ListenPort.
 				Endpoint: "127.0.0.1:51820",

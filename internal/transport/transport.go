@@ -274,7 +274,7 @@ func (transport *Transport) SetPrivateKey(sk types.NoisePrivateKey) {
 
 	// remove peers with matching public keys
 
-	publicKey := sk.PublicKey()
+	publicKey := sk.Public()
 	for key, peer := range transport.peers.keyMap {
 		if peer.handshake.remoteStatic.Equals(publicKey) {
 			peer.handshake.mutex.RUnlock()

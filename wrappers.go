@@ -32,7 +32,7 @@ func (a *Addr) PublicKey() types.NoisePublicKey {
 // Conn is a wrapper around net.Conn that includes the source NoisePublicKey.
 type Conn struct {
 	stdnet.Conn
-	pd *peerDirectory
+	peers *peerList
 }
 
 func (c *Conn) RemoteAddr() stdnet.Addr {
@@ -41,18 +41,18 @@ func (c *Conn) RemoteAddr() stdnet.Addr {
 		return nil
 	}
 
-	pk, ok := c.pd.lookupPeerByAddress(netip.MustParseAddrPort(remoteAddr.String()).Addr())
+	peer, ok := c.peers.lookupByAddress(netip.MustParseAddrPort(remoteAddr.String()).Addr())
 	if !ok {
 		// Just return the standard address if we can't find the peer.
 		return remoteAddr
 	}
 
-	return &Addr{Addr: c.Conn.RemoteAddr(), pk: pk}
+	return &Addr{Addr: c.Conn.RemoteAddr(), pk: peer.publicKey}
 }
 
 type listener struct {
 	stdnet.Listener
-	pd *peerDirectory
+	peers *peerList
 }
 
 func (l *listener) Accept() (stdnet.Conn, error) {
@@ -66,12 +66,12 @@ func (l *listener) Accept() (stdnet.Conn, error) {
 		return nil, err
 	}
 
-	return &Conn{Conn: conn, pd: l.pd}, nil
+	return &Conn{Conn: conn, peers: l.peers}, nil
 }
 
 type packetConn struct {
 	stdnet.PacketConn
-	pd *peerDirectory
+	peers *peerList
 }
 
 func (pc *packetConn) ReadFrom(b []byte) (int, stdnet.Addr, error) {
@@ -80,13 +80,13 @@ func (pc *packetConn) ReadFrom(b []byte) (int, stdnet.Addr, error) {
 		return n, nil, err
 	}
 
-	pk, ok := pc.pd.lookupPeerByAddress(netip.MustParseAddrPort(addr.String()).Addr())
+	peer, ok := pc.peers.lookupByAddress(netip.MustParseAddrPort(addr.String()).Addr())
 	if !ok {
 		// Just return the standard address if we can't find the peer.
 		return n, addr, err
 	}
 
-	return n, &Addr{Addr: addr, pk: pk}, err
+	return n, &Addr{Addr: addr, pk: peer.publicKey}, err
 }
 
 func (pc *packetConn) WriteTo(b []byte, addr stdnet.Addr) (int, error) {

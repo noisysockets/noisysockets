@@ -72,16 +72,11 @@ func (sk *NoisePrivateKey) clamp() {
 	sk[31] = (sk[31] & 127) | 64
 }
 
-func (sk NoisePrivateKey) PublicKey() (pk NoisePublicKey) {
+func (sk NoisePrivateKey) Public() (pk NoisePublicKey) {
 	apk := (*[NoisePublicKeySize]byte)(&pk)
 	ask := (*[NoisePrivateKeySize]byte)(&sk)
 	curve25519.ScalarBaseMult(apk, ask)
 	return
-}
-
-func (sk NoisePrivateKey) IsZero() bool {
-	var zero NoisePrivateKey
-	return sk.Equals(zero)
 }
 
 func (sk NoisePrivateKey) Equals(tar NoisePrivateKey) bool {
@@ -101,11 +96,6 @@ func (pk *NoisePublicKey) FromString(src string) error {
 	return nil
 }
 
-func (pk NoisePublicKey) IsZero() bool {
-	var zero NoisePublicKey
-	return pk.Equals(zero)
-}
-
 func (pk NoisePublicKey) Equals(tar NoisePublicKey) bool {
 	return subtle.ConstantTimeCompare(pk[:], tar[:]) == 1
 }
@@ -114,7 +104,7 @@ func (pk NoisePublicKey) String() string {
 	return base64.StdEncoding.EncodeToString(pk[:])
 }
 
-func (pk NoisePublicKey) ShortString() string {
+func (pk NoisePublicKey) DisplayString() string {
 	base64Key := base64.StdEncoding.EncodeToString(pk[:])
 	return base64Key[0:4] + "…" + base64Key[39:43]
 }

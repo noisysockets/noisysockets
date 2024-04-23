@@ -76,7 +76,7 @@ var protoSplitter = regexp.MustCompile(`^(tcp|udp)(4|6)?$`)
 
 type NoisySocketsNetwork struct {
 	logger       *slog.Logger
-	pd           *peerDirectory
+	peers        *peerList
 	transport    *transport.Transport
 	stack        *stack.Stack
 	localAddrs   []netip.Addr
@@ -93,13 +93,13 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 
-	publicKey := privateKey.PublicKey()
+	publicKey := privateKey.Public()
 
-	logger = logger.With(slog.String("id", publicKey.ShortString()))
+	logger = logger.With(slog.String("id", publicKey.DisplayString()))
 
 	net := &NoisySocketsNetwork{
 		logger: logger,
-		pd:     newPeerDirectory(),
+		peers:  newPeerList(),
 		stack: stack.New(stack.Options{
 			NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
 			TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol, icmp.NewProtocol4, icmp.NewProtocol6},
@@ -123,22 +123,24 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 		}
 	}
 
-	// Add the local node to the peer directory.
+	// Add the local node to the list of peers.
 	hostname := conf.Name
 	if hostname == "" {
 		hostname = "localhost"
 	}
 
-	if err := net.pd.addPeer(hostname, publicKey, net.localAddrs); err != nil {
-		return nil, fmt.Errorf("could not add local peer to directory: %w", err)
-	}
+	net.peers.add(&peer{
+		name:      hostname,
+		publicKey: publicKey,
+		addrs:     net.localAddrs,
+	})
 
 	net.dnsServers, err = parseIPPortList(conf.DNSServers)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse DNS servers: %w", err)
 	}
 
-	sourceSink, err := newSourceSink(logger, net.pd, net.stack, net.localAddrs)
+	sourceSink, err := newSourceSink(logger, net.peers, net.stack, net.localAddrs)
 	if err != nil {
 		return nil, fmt.Errorf("could not create source sink: %w", err)
 	}
@@ -180,8 +182,13 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 }
 
 func (net *NoisySocketsNetwork) Close() error {
+	if err := net.transport.Close(); err != nil {
+		return fmt.Errorf("failed to close transport: %w", err)
+	}
+
 	net.stack.Close()
-	return net.transport.Close()
+
+	return nil
 }
 
 func (net *NoisySocketsNetwork) HasIPv4() bool {
@@ -203,15 +210,11 @@ func (net *NoisySocketsNetwork) LookupHost(host string) ([]string, error) {
 	}
 
 	// Host is the name of a peer.
-	if peerAddrs, ok := net.pd.lookupPeerAddressesByName(host); ok {
-		for _, peerAddr := range peerAddrs {
-			if net.hasV4 && peerAddr.Is4() {
-				addrs = append(addrs, peerAddr)
-			} else if net.hasV6 && peerAddr.Is6() {
-				addrs = append(addrs, peerAddr)
-			}
-		}
+	if p, ok := net.peers.lookupByName(host); ok {
+		p.Lock()
+		defer p.Unlock()
 
+		addrs = p.addrs
 		goto LOOKUP_HOST_DONE
 	}
 
@@ -391,7 +394,7 @@ func (net *NoisySocketsNetwork) Listen(network, address string) (stdnet.Listener
 		return nil, err
 	}
 
-	return &listener{Listener: lis, pd: net.pd}, nil
+	return &listener{Listener: lis, peers: net.peers}, nil
 }
 
 func (net *NoisySocketsNetwork) ListenPacket(network, address string) (stdnet.PacketConn, error) {
@@ -453,41 +456,45 @@ func (net *NoisySocketsNetwork) ListenPacket(network, address string) (stdnet.Pa
 		return nil, err
 	}
 
-	return &packetConn{PacketConn: pc, pd: net.pd}, nil
+	return &packetConn{PacketConn: pc, peers: net.peers}, nil
 }
 
 // AddPeer adds a wireguard peer to the network.
 func (net *NoisySocketsNetwork) AddPeer(peerConf v1alpha1.PeerConfig) error {
-	var peerPublicKey types.NoisePublicKey
-	if err := peerPublicKey.FromString(peerConf.PublicKey); err != nil {
+	var publicKey types.NoisePublicKey
+	if err := publicKey.FromString(peerConf.PublicKey); err != nil {
 		return fmt.Errorf("failed to parse peer public key: %w", err)
 	}
 
 	net.logger.Debug("Adding peer",
 		slog.String("name", peerConf.Name),
-		slog.String("peer", peerPublicKey.ShortString()))
+		slog.String("peer", publicKey.DisplayString()))
 
-	var peerAddrs []netip.Addr
+	var addrs []netip.Addr
 	for _, ip := range peerConf.IPs {
 		addr, err := netip.ParseAddr(ip)
 		if err != nil {
 			return fmt.Errorf("could not parse peer address %q: %v", ip, err)
 		}
-		peerAddrs = append(peerAddrs, addr)
+		addrs = append(addrs, addr)
 	}
 
-	if err := net.pd.addPeer(peerConf.Name, peerPublicKey, peerAddrs); err != nil {
-		return fmt.Errorf("failed to add peer %s to directory: %w", peerConf.Name, err)
+	p := &peer{
+		name:      peerConf.Name,
+		publicKey: publicKey,
+		addrs:     addrs,
 	}
+	net.peers.add(p)
 
-	peer, err := net.transport.NewPeer(peerPublicKey)
+	var err error
+	p.Peer, err = net.transport.NewPeer(publicKey)
 	if err != nil {
 		return fmt.Errorf("failed to create peer: %w", err)
 	}
 
 	// Regularly send keepalives to the peer to keep NAT mappings valid.
 	// This could be configurable but I think it's a good default to avoid footguns.
-	peer.SetKeepAliveInterval(25 * time.Second)
+	p.SetKeepAliveInterval(25 * time.Second)
 
 	if peerConf.Endpoint != "" {
 		peerEndpointHost, peerEndpointPortStr, err := stdnet.SplitHostPort(peerConf.Endpoint)
@@ -505,18 +512,31 @@ func (net *NoisySocketsNetwork) AddPeer(peerConf v1alpha1.PeerConfig) error {
 			return fmt.Errorf("failed to parse peer port: %w", err)
 		}
 
-		peer.SetEndpoint(&conn.StdNetEndpoint{
+		// TODO: try all resolved addresses until one works.
+		p.SetEndpoint(&conn.StdNetEndpoint{
 			AddrPort: netip.AddrPortFrom(netip.MustParseAddr(peerEndpointAddrs[0]), uint16(peerEndpointPort)),
 		})
 
-		peer.Start()
+		p.Start()
 
-		if err := peer.SendKeepalive(); err != nil {
+		if err := p.SendKeepalive(); err != nil {
 			net.logger.Warn("Failed to send initial keepalive", "peer", peerConf.Name, "error", err)
 		}
 	}
 
 	return nil
+}
+
+// RemovePeer removes a wireguard peer from the network.
+func (net *NoisySocketsNetwork) RemovePeer(publicKey types.NoisePublicKey) error {
+	net.logger.Debug("Removing peer", slog.String("peer", publicKey.DisplayString()))
+
+	net.peers.remove(publicKey)
+
+	net.transport.RemovePeer(publicKey)
+
+	return nil
+
 }
 
 // AddRoute adds a routing table entry for the network.
@@ -526,16 +546,20 @@ func (net *NoisySocketsNetwork) AddRoute(routeConf v1alpha1.RouteConfig) error {
 		slog.String("via", routeConf.Via),
 		slog.Bool("default", routeConf.Default))
 
-	pk, ok := net.pd.lookupPeerByName(routeConf.Via)
+	p, ok := net.peers.lookupByName(routeConf.Via)
 	if !ok {
-		return fmt.Errorf("unknown peer %s", routeConf.Via)
+		return ErrUnknownPeer
 	}
+
+	p.Lock()
 
 	var destinations []*stdnet.IPNet
 	if len(routeConf.Destinations) > 0 {
 		var err error
 		destinations, err = parseCIDRList(routeConf.Destinations)
 		if err != nil {
+			p.Unlock()
+
 			return fmt.Errorf("could not parse destinations: %w", err)
 		}
 	} else if routeConf.Default {
@@ -554,8 +578,33 @@ func (net *NoisySocketsNetwork) AddRoute(routeConf v1alpha1.RouteConfig) error {
 		}
 	}
 
-	if err := net.pd.addGateway(pk, destinations, routeConf.Default); err != nil {
-		return fmt.Errorf("could not add gateway: %w", err)
+	p.destinations = dedupNetworks(append(p.destinations, destinations...))
+
+	p.Unlock()
+
+	// Load the updated routing table.
+	return net.refreshAddressesAndRoutes()
+}
+
+// RemoveRoute removes a routing table entry for the network.
+func (net *NoisySocketsNetwork) RemoveRoute(destination *stdnet.IPNet) error {
+	net.logger.Debug("Removing route", slog.String("destination", destination.String()))
+
+	firstAddr, ok := netip.AddrFromSlice(destination.IP)
+	if !ok {
+		return fmt.Errorf("could not parse destination address: %v", destination)
+	}
+
+	p, ok := net.peers.lookupByAddress(firstAddr)
+	if !ok {
+		return fmt.Errorf("could not find peer for destination address: %v", destination)
+	}
+
+	for i, dest := range p.destinations {
+		if dest.String() == destination.String() {
+			p.destinations = append(p.destinations[:i], p.destinations[i+1:]...)
+			break
+		}
 	}
 
 	// Load the updated routing table.
@@ -563,13 +612,16 @@ func (net *NoisySocketsNetwork) AddRoute(routeConf v1alpha1.RouteConfig) error {
 }
 
 // GetPeerEndpoint returns the public address/endpoint of a peer (if known).
-func (net *NoisySocketsNetwork) GetPeerEndpoint(pk types.NoisePublicKey) (netip.AddrPort, error) {
-	peer := net.transport.LookupPeer(pk)
-	if peer == nil {
+func (net *NoisySocketsNetwork) GetPeerEndpoint(publicKey types.NoisePublicKey) (netip.AddrPort, error) {
+	p, ok := net.peers.get(publicKey)
+	if !ok {
 		return netip.AddrPort{}, ErrUnknownPeer
 	}
 
-	endpoint := peer.GetEndpoint()
+	p.Lock()
+	defer p.Unlock()
+
+	endpoint := p.GetEndpoint()
 	if endpoint == nil {
 		return netip.AddrPort{}, ErrNoEndpoint
 	}
@@ -578,13 +630,16 @@ func (net *NoisySocketsNetwork) GetPeerEndpoint(pk types.NoisePublicKey) (netip.
 }
 
 // SetPeerEndpoint sets the public address/endpoint of a peer.
-func (net *NoisySocketsNetwork) SetPeerEndpoint(pk types.NoisePublicKey, endpoint netip.AddrPort) error {
-	peer := net.transport.LookupPeer(pk)
-	if peer == nil {
+func (net *NoisySocketsNetwork) SetPeerEndpoint(peerPublicKey types.NoisePublicKey, endpoint netip.AddrPort) error {
+	p, ok := net.peers.get(peerPublicKey)
+	if !ok {
 		return ErrUnknownPeer
 	}
 
-	peer.SetEndpoint(&conn.StdNetEndpoint{AddrPort: endpoint})
+	p.Lock()
+	defer p.Unlock()
+
+	p.SetEndpoint(&conn.StdNetEndpoint{AddrPort: endpoint})
 
 	return nil
 }
@@ -643,18 +698,21 @@ func (net *NoisySocketsNetwork) refreshAddressesAndRoutes() error {
 	var explicitDefaultGateway bool
 	var routes []tcpip.Route
 
-	err := net.pd.forEachGateway(func(addrs []netip.Addr, destinations []*stdnet.IPNet, isDefault bool) error {
-		if isDefault {
+	err := net.peers.forEach(func(p *peer) error {
+		p.Lock()
+		defer p.Unlock()
+
+		if p.defaultGateway {
 			explicitDefaultGateway = true
 		}
 
-		net.logger.Debug("Adding gateway route",
-			slog.Any("addrs", addrs),
-			slog.Any("destinations", destinations),
-			slog.Bool("default", isDefault))
+		net.logger.Debug("Adding route",
+			slog.String("via", p.name),
+			slog.Any("destinations", p.destinations),
+			slog.Bool("default", p.defaultGateway))
 
 		var addrV4, addrV6 tcpip.Address
-		for _, addr := range addrs {
+		for _, addr := range p.addrs {
 			if net.hasV4 && addr.Is4() {
 				addrV4 = tcpip.AddrFromSlice(addr.AsSlice())
 			} else if net.hasV6 && addr.Is6() {
@@ -662,7 +720,7 @@ func (net *NoisySocketsNetwork) refreshAddressesAndRoutes() error {
 			}
 		}
 
-		for _, destination := range destinations {
+		for _, destination := range p.destinations {
 			if net.hasV4 && destination.IP.To4() != nil {
 				dstNetwork, err := tcpip.NewSubnet(tcpip.AddrFrom4Slice(destination.IP.To4()), tcpip.MaskFromBytes(destination.Mask))
 				if err != nil {

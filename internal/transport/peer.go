@@ -165,7 +165,7 @@ func (peer *Peer) SendBuffers(buffers [][]byte) error {
 }
 
 func (peer *Peer) String() string {
-	return fmt.Sprintf("peer(%s)", peer.handshake.remoteStatic.ShortString())
+	return fmt.Sprintf("peer(%s)", peer.handshake.remoteStatic.DisplayString())
 }
 
 func (peer *Peer) Start() {

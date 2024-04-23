@@ -49,7 +49,7 @@ func TestCookieMAC1(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pk := sk.PublicKey()
+	pk := sk.Public()
 
 	generator.Init(pk)
 	checker.Init(pk)

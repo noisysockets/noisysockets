@@ -223,7 +223,7 @@ func (transport *Transport) CreateMessageInitiation(peer *Peer) (*MessageInitiat
 
 	msg := MessageInitiation{
 		Type:      MessageInitiationType,
-		Ephemeral: handshake.localEphemeral.PublicKey(),
+		Ephemeral: handshake.localEphemeral.Public(),
 	}
 
 	handshake.mixKey(msg.Ephemeral[:])
@@ -405,7 +405,7 @@ func (transport *Transport) CreateMessageResponse(peer *Peer) (*MessageResponse,
 	if err != nil {
 		return nil, err
 	}
-	msg.Ephemeral = handshake.localEphemeral.PublicKey()
+	msg.Ephemeral = handshake.localEphemeral.Public()
 	handshake.mixHash(msg.Ephemeral[:])
 	handshake.mixKey(msg.Ephemeral[:])
 
