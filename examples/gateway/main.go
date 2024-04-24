@@ -18,7 +18,6 @@ import (
 
 func main() {
 	logger := slog.Default()
-	ctx := context.Background()
 
 	// Generate keypair for the gateway peer.
 	gatewayPrivateKey, err := types.NewPrivateKey()
@@ -39,6 +38,7 @@ func main() {
 
 	// Usually this would be a VPN server running on a remote host. But for the
 	// sake of this example, we'll spin up a local container running WireGuard.
+	ctx := context.Background()
 	gatewayHostPort, stopGateway, err := gateway.Start(ctx, gatewayPrivateKey, clientPrivateKey.Public())
 	if err != nil {
 		logger.Error("Failed to start wireguard gateway", slog.Any("error", err))

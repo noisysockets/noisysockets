@@ -45,6 +45,8 @@ import (
 )
 
 type Transport struct {
+	logger *slog.Logger
+
 	state struct {
 		// state holds the transport's state. It is accessed atomically.
 		// Use the transport.transportState method to read it.
@@ -107,7 +109,6 @@ type Transport struct {
 	sourceSink SourceSink
 
 	closed chan struct{}
-	log    *slog.Logger
 }
 
 // transportState represents the state of a Transport.
@@ -172,7 +173,7 @@ func (transport *Transport) changeState(want transportState) (err error) {
 	old := transport.transportState()
 	if old == transportStateClosed {
 		// once closed, always closed
-		transport.log.Debug("Interface closed, ignored requested state", "transportState", want)
+		transport.logger.Debug("Interface closed, ignored requested state", slog.String("want", want.String()))
 		return nil
 	}
 	switch want {
@@ -192,7 +193,9 @@ func (transport *Transport) changeState(want transportState) (err error) {
 			err = errDown
 		}
 	}
-	transport.log.Debug("Interface state change requested", "old", old, "want", want, "now", transport.transportState())
+	transport.logger.Debug("Interface state change requested",
+		slog.String("old", old.String()), slog.String("want", want.String()),
+		slog.String("now", transport.transportState().String()))
 	return
 }
 
@@ -200,7 +203,7 @@ func (transport *Transport) changeState(want transportState) (err error) {
 // The caller must hold transport.state.mu and is responsible for updating transport.state.state.
 func (transport *Transport) upLocked() error {
 	if err := transport.BindUpdate(); err != nil {
-		transport.log.Error("Unable to update bind", "error", err)
+		transport.logger.Error("Unable to update bind", slog.Any("error", err))
 		return err
 	}
 
@@ -209,7 +212,8 @@ func (transport *Transport) upLocked() error {
 		peer.Start()
 		if peer.keepAliveInterval.Load() > 0 {
 			if err := peer.SendKeepalive(); err != nil {
-				transport.log.Error("Failed to send keepalive", "peer", peer, "error", err)
+				transport.logger.Error("Failed to send keepalive",
+					slog.String("peer", peer.String()), slog.Any("error", err))
 			}
 		}
 	}
@@ -222,7 +226,7 @@ func (transport *Transport) upLocked() error {
 func (transport *Transport) downLocked() error {
 	err := transport.BindClose()
 	if err != nil {
-		transport.log.Error("Bind close failed", "error", err)
+		transport.logger.Error("Bind close failed", slog.Any("error", err))
 	}
 
 	transport.peers.RLock()
@@ -310,7 +314,7 @@ func NewTransport(logger *slog.Logger, sourceSink SourceSink, bind conn.Bind) *T
 	t := new(Transport)
 	t.state.state.Store(uint32(transportStateDown))
 	t.closed = make(chan struct{})
-	t.log = logger
+	t.logger = logger
 	t.net.bind = bind
 	t.sourceSink = sourceSink
 	t.peers.keyMap = make(map[types.NoisePublicKey]*Peer)
@@ -403,7 +407,7 @@ func (transport *Transport) Close() error {
 		return nil
 	}
 	transport.state.state.Store(uint32(transportStateClosed))
-	transport.log.Debug("Transport closing")
+	transport.logger.Debug("Transport closing")
 
 	_ = transport.sourceSink.Close()
 	_ = transport.downLocked()
@@ -424,7 +428,7 @@ func (transport *Transport) Close() error {
 		return fmt.Errorf("failed to close rate limiter: %w", err)
 	}
 
-	transport.log.Debug("Transport closed")
+	transport.logger.Debug("Transport closed")
 	close(transport.closed)
 
 	return nil
@@ -446,7 +450,8 @@ func (transport *Transport) SendKeepalivesToPeersWithCurrentKeypair() {
 		peer.keypairs.RUnlock()
 		if sendKeepalive {
 			if err := peer.SendKeepalive(); err != nil {
-				transport.log.Error("Failed to send keepalive", "peer", peer, "error", err)
+				transport.logger.Error("Failed to send keepalive",
+					slog.String("peer", peer.String()), slog.Any("error", err))
 			}
 		}
 	}
@@ -505,7 +510,7 @@ func (transport *Transport) BindUpdate() error {
 		go transport.RoutineReceiveIncoming(batchSize, fn)
 	}
 
-	transport.log.Debug("UDP bind has been updated")
+	transport.logger.Debug("UDP bind has been updated")
 	return nil
 }
 

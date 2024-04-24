@@ -34,6 +34,7 @@ package transport
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -343,11 +344,13 @@ func (transport *Transport) ConsumeMessageInitiation(msg *MessageInitiation) *Pe
 	flood := time.Since(handshake.lastInitiationConsumption) <= HandshakeInitationRate
 	handshake.mutex.RUnlock()
 	if replay {
-		transport.log.Debug("ConsumeMessageInitiation: handshake replay", "peer", peer)
+		transport.logger.Debug("ConsumeMessageInitiation: handshake replay",
+			slog.String("peer", peer.String()))
 		return nil
 	}
 	if flood {
-		transport.log.Debug("ConsumeMessageInitiation: handshake flood", "peer", peer)
+		transport.logger.Debug("ConsumeMessageInitiation: handshake flood",
+			slog.String("peer", peer.String()))
 		return nil
 	}
 
@@ -446,7 +449,8 @@ func (transport *Transport) CreateMessageResponse(peer *Peer) (*MessageResponse,
 
 func (transport *Transport) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 	if msg.Type != MessageResponseType {
-		transport.log.Debug("ConsumeMessageResponse: invalid message type", "type", msg.Type)
+		transport.logger.Debug("ConsumeMessageResponse: invalid message type",
+			slog.Int("type", int(msg.Type)))
 		return nil
 	}
 
@@ -455,7 +459,8 @@ func (transport *Transport) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 	lookup := transport.indexTable.Lookup(msg.Receiver)
 	handshake := lookup.handshake
 	if handshake == nil {
-		transport.log.Debug("ConsumeMessageResponse: no handshake found for receiver", "receiver", msg.Receiver)
+		transport.logger.Debug("ConsumeMessageResponse: no handshake found for receiver",
+			slog.Int("receiver", int(msg.Receiver)))
 		return nil
 	}
 
@@ -471,7 +476,9 @@ func (transport *Transport) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 		defer handshake.mutex.RUnlock()
 
 		if handshake.state != handshakeInitiationCreated {
-			transport.log.Debug("ConsumeMessageResponse: invalid state", "peer", lookup.peer, "handshakeState", handshake.state)
+			transport.logger.Debug("ConsumeMessageResponse: invalid state",
+				slog.String("peer", lookup.peer.String()),
+				slog.String("handshakeState", handshake.state.String()))
 			return false
 		}
 
@@ -487,7 +494,8 @@ func (transport *Transport) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 
 		ss, err := sharedSecret(handshake.localEphemeral, msg.Ephemeral)
 		if err != nil {
-			transport.log.Debug("ConsumeMessageResponse: failed to compute shared secret", "peer", lookup.peer)
+			transport.logger.Debug("ConsumeMessageResponse: failed to compute shared secret",
+				slog.String("peer", lookup.peer.String()))
 			return false
 		}
 		mixKey(&chainKey, &chainKey, ss[:])
@@ -495,7 +503,8 @@ func (transport *Transport) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 
 		ss, err = sharedSecret(transport.staticIdentity.privateKey, msg.Ephemeral)
 		if err != nil {
-			transport.log.Debug("ConsumeMessageResponse: failed to compute shared secret", "peer", lookup.peer)
+			transport.logger.Debug("ConsumeMessageResponse: failed to compute shared secret",
+				slog.String("peer", lookup.peer.String()))
 			return false
 		}
 		mixKey(&chainKey, &chainKey, ss[:])
@@ -519,7 +528,8 @@ func (transport *Transport) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 		aead, _ := chacha20poly1305.New(key[:])
 		_, err = aead.Open(nil, ZeroNonce[:], msg.Empty[:], hash[:])
 		if err != nil {
-			transport.log.Debug("ConsumeMessageResponse: failed to authenticate transcript", "peer", lookup.peer)
+			transport.logger.Debug("ConsumeMessageResponse: failed to authenticate transcript",
+				slog.String("peer", lookup.peer.String()))
 			return false
 		}
 		mixHash(&hash, &hash, msg.Empty[:])

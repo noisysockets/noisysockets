@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
+	"strconv"
 
 	stdnet "net"
 
@@ -35,7 +37,7 @@ func main() {
 	}
 
 	// Create a network for "server" peer.
-	serverNet, err := noisysockets.NewNetwork(logger, &v1alpha1.Config{
+	serverConf := &v1alpha1.Config{
 		Name:       "server",
 		PrivateKey: serverPrivateKey.String(),
 		IPs:        []string{"10.0.0.1"},
@@ -47,7 +49,9 @@ func main() {
 				IPs:       []string{"10.0.0.2"},
 			},
 		},
-	})
+	}
+
+	serverNet, err := noisysockets.NewNetwork(logger, serverConf)
 	if err != nil {
 		logger.Error("Failed to create network", slog.Any("error", err))
 		os.Exit(1)
@@ -64,8 +68,7 @@ func main() {
 				Name:      "server",
 				PublicKey: serverPrivateKey.Public().String(),
 				IPs:       []string{"10.0.0.1"},
-				// This endpoint address corresponds to the server's ListenPort.
-				Endpoint: "127.0.0.1:51820",
+				Endpoint:  net.JoinHostPort("localhost", strconv.Itoa(int(serverConf.ListenPort))),
 			},
 		},
 	})

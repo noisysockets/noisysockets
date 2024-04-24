@@ -14,34 +14,23 @@ import (
 	"net/netip"
 	"sync"
 
-	"github.com/noisysockets/noisysockets/internal/transport"
 	"github.com/noisysockets/noisysockets/types"
 )
 
-type peer struct {
-	sync.Mutex
-	*transport.Peer
-	name           string
-	publicKey      types.NoisePublicKey
-	addrs          []netip.Addr
-	defaultGateway bool
-	destinations   []*stdnet.IPNet
-}
-
 type peerList struct {
 	mu         sync.RWMutex
-	m          map[types.NoisePublicKey]*peer
-	addrToPeer map[netip.Addr]*peer
+	m          map[types.NoisePublicKey]*Peer
+	addrToPeer map[netip.Addr]*Peer
 }
 
 func newPeerList() *peerList {
 	return &peerList{
-		m:          make(map[types.NoisePublicKey]*peer),
-		addrToPeer: make(map[netip.Addr]*peer),
+		m:          make(map[types.NoisePublicKey]*Peer),
+		addrToPeer: make(map[netip.Addr]*Peer),
 	}
 }
 
-func (pl *peerList) add(peer *peer) {
+func (pl *peerList) add(peer *Peer) {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 
@@ -61,7 +50,7 @@ func (pl *peerList) remove(publicKey types.NoisePublicKey) {
 	clear(pl.addrToPeer)
 }
 
-func (pl *peerList) get(publicKey types.NoisePublicKey) (*peer, bool) {
+func (pl *peerList) get(publicKey types.NoisePublicKey) (*Peer, bool) {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 
@@ -69,7 +58,7 @@ func (pl *peerList) get(publicKey types.NoisePublicKey) (*peer, bool) {
 	return p, ok
 }
 
-func (pl *peerList) lookupByAddress(addr netip.Addr) (*peer, bool) {
+func (pl *peerList) lookupByAddress(addr netip.Addr) (*Peer, bool) {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 
@@ -104,7 +93,7 @@ func (pl *peerList) lookupByAddress(addr netip.Addr) (*peer, bool) {
 	return nil, false
 }
 
-func (pl *peerList) lookupByName(name string) (*peer, bool) {
+func (pl *peerList) lookupByName(name string) (*Peer, bool) {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 
@@ -120,7 +109,7 @@ func (pl *peerList) lookupByName(name string) (*peer, bool) {
 	return nil, false
 }
 
-func (pl *peerList) forEach(fn func(*peer) error) error {
+func (pl *peerList) forEach(fn func(*Peer) error) error {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 

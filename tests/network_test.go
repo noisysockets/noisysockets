@@ -463,7 +463,7 @@ func TestWireGuardCompatibility(t *testing.T) {
 	// Spin up a WireGuard gateway.
 	wgReq := testcontainers.ContainerRequest{
 		Image:        "ghcr.io/noisysockets/gateway:v0.1.0",
-		ExposedPorts: []string{"51820/udp"},
+		ExposedPorts: []string{"51820/udp", "53/tcp"},
 		Files: []testcontainers.ContainerFile{
 			{HostFilePath: filepath.Join(pwd, "testdata/wg0.conf"), ContainerFilePath: "/etc/wireguard/wg0.conf", FileMode: 0o400},
 		},
@@ -478,6 +478,8 @@ func TestWireGuardCompatibility(t *testing.T) {
 
 			hostConfig.Binds = append(hostConfig.Binds, "/dev/net/tun:/dev/net/tun")
 		},
+		// Wait for embedded DNS server to be ready.
+		WaitingFor: wait.ForListeningPort("53"),
 	}
 
 	wgC, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -488,9 +490,6 @@ func TestWireGuardCompatibility(t *testing.T) {
 	t.Cleanup(func() {
 		require.NoError(t, wgC.Terminate(ctx))
 	})
-
-	// Time for everything to settle down.
-	time.Sleep(3 * time.Second)
 
 	outputDir := t.TempDir()
 	configPath := filepath.Join(outputDir, "noisysockets.yaml")

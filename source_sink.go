@@ -32,7 +32,9 @@
 package noisysockets
 
 import (
+	"context"
 	"fmt"
+	"hash/fnv"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -58,6 +60,7 @@ var (
 
 type sourceSink struct {
 	logger       *slog.Logger
+	debugLogging bool
 	peers        *peerList
 	stack        *stack.Stack
 	ep           *channel.Endpoint
@@ -68,12 +71,13 @@ type sourceSink struct {
 
 func newSourceSink(logger *slog.Logger, peers *peerList, s *stack.Stack, localAddrs []netip.Addr) (*sourceSink, error) {
 	ss := &sourceSink{
-		logger:     logger,
-		peers:      peers,
-		stack:      s,
-		ep:         channel.New(queueSize, uint32(transport.DefaultMTU), ""),
-		incoming:   make(chan *stack.PacketBuffer),
-		localAddrs: localAddrs,
+		logger:       logger,
+		debugLogging: logger.Enabled(context.Background(), slog.LevelDebug),
+		peers:        peers,
+		stack:        s,
+		ep:           channel.New(queueSize, uint32(transport.DefaultMTU), ""),
+		incoming:     make(chan *stack.PacketBuffer),
+		localAddrs:   localAddrs,
 	}
 
 	ss.notifyHandle = ss.ep.AddNotify(ss)
@@ -91,6 +95,9 @@ func (ss *sourceSink) Close() error {
 
 	ss.stack.RemoveNIC(1)
 
+	// Drain the incoming channel before closing.
+	ss.drain()
+
 	close(ss.incoming)
 
 	return nil
@@ -99,6 +106,11 @@ func (ss *sourceSink) Close() error {
 func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []types.NoisePublicKey, offset int) (int, error) {
 	packetFn := func(idx int, pkt *stack.PacketBuffer) error {
 		defer pkt.DecRef()
+
+		if ss.debugLogging {
+			ss.logger.Debug("Processing netstack packet",
+				slog.Uint64("packetHash", hashPacketMetadata(pkt)))
+		}
 
 		// Extract the destination IP address from the packet
 		var peerAddr netip.Addr
@@ -129,9 +141,10 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []types.Nois
 		}
 		destinations[idx] = dstPeer.publicKey
 
-		logger = logger.With(slog.String("destination", destinations[idx].DisplayString()))
-
-		logger.Debug("Sending packet")
+		if ss.debugLogging {
+			logger.Debug("Sending packet to peer",
+				slog.String("destination", destinations[idx].DisplayString()))
+		}
 
 		view := pkt.ToView()
 		n, err := view.Read(bufs[idx][offset:])
@@ -153,6 +166,7 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []types.Nois
 	}
 
 	if err := packetFn(count, pkt); err != nil {
+		ss.logger.Warn("Failed to process packet", slog.Any("error", err))
 		return count, err
 	}
 
@@ -166,6 +180,7 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []types.Nois
 			}
 
 			if err := packetFn(count, pkt); err != nil {
+				ss.logger.Warn("Failed to process packet", slog.Any("error", err))
 				return count, err
 			}
 
@@ -184,7 +199,9 @@ func (ss *sourceSink) Write(bufs [][]byte, sources []types.NoisePublicKey, offse
 			continue
 		}
 
-		ss.logger.Debug("Received packet")
+		if ss.debugLogging {
+			ss.logger.Debug("Received packet from peer", slog.String("source", sources[i].DisplayString()))
+		}
 
 		// Validate the source address (to prevent spoofing).
 		protocolNumber, err := ss.validateSourceAddress(buf[offset:], sources[i])
@@ -193,6 +210,10 @@ func (ss *sourceSink) Write(bufs [][]byte, sources []types.NoisePublicKey, offse
 		}
 
 		pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(buf[offset:])})
+
+		if ss.debugLogging {
+			ss.logger.Debug("Injecting inbound packet into netstack")
+		}
 
 		ss.ep.InjectInbound(protocolNumber, pkt)
 	}
@@ -210,7 +231,27 @@ func (ss *sourceSink) WriteNotify() {
 		return
 	}
 
+	if ss.debugLogging {
+		ss.logger.Debug("Received outbound packet from netstack",
+			slog.Uint64("packetHash", hashPacketMetadata(pkt)))
+	}
+
 	ss.incoming <- pkt
+}
+
+func (ss *sourceSink) drain() {
+	for {
+		select {
+		case pkt, ok := <-ss.incoming:
+			if !ok {
+				return
+			}
+
+			pkt.DecRef()
+		default:
+			return
+		}
+	}
 }
 
 func (ss *sourceSink) validateSourceAddress(buf []byte, source types.NoisePublicKey) (tcpip.NetworkProtocolNumber, error) {
@@ -254,4 +295,11 @@ func (ss *sourceSink) validateSourceAddress(buf []byte, source types.NoisePublic
 	}
 
 	return protocolNumber, nil
+}
+
+func hashPacketMetadata(pkt *stack.PacketBuffer) uint64 {
+	h := fnv.New64a()
+	_, _ = h.Write(pkt.NetworkHeader().Slice())
+	_, _ = h.Write(pkt.TransportHeader().Slice())
+	return h.Sum64()
 }

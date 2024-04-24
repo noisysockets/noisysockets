@@ -35,6 +35,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -103,13 +104,13 @@ func (peer *Peer) keepKeyFreshReceiving() error {
 func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.ReceiveFunc) {
 	recvName := recv.PrettyName()
 	defer func() {
-		transport.log.Debug("Routine: receive incoming - stopped", "recvName", recvName)
+		transport.logger.Debug("Routine: receive incoming - stopped", slog.String("recvName", recvName))
 		transport.queue.decryption.wg.Done()
 		transport.queue.handshake.wg.Done()
 		transport.net.stopping.Done()
 	}()
 
-	transport.log.Debug("Routine: receive incoming - started", "recvName", recvName)
+	transport.logger.Debug("Routine: receive incoming - started", slog.String("recvName", recvName))
 
 	// receive datagrams until conn is closed
 
@@ -143,7 +144,9 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
-			transport.log.Warn("Failed to receive packet", "recvName", recvName, "error", err)
+			transport.logger.Warn("Failed to receive packet",
+				slog.String("recvName", recvName),
+				slog.Any("error", err))
 			if deathSpiral < 10 {
 				deathSpiral++
 				time.Sleep(time.Second / 3)
@@ -231,7 +234,8 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 				}
 
 			default:
-				transport.log.Warn("Received message with unknown type", "type", msgType)
+				transport.logger.Warn("Received message with unknown type",
+					slog.Int("type", int(msgType)))
 				continue
 			}
 
@@ -266,8 +270,8 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 func (transport *Transport) RoutineDecryption(id int) {
 	var nonce [chacha20poly1305.NonceSize]byte
 
-	defer transport.log.Debug("Routine: decryption worker - stopped", "id", id)
-	transport.log.Debug("Routine: decryption worker - started", "id", id)
+	defer transport.logger.Debug("Routine: decryption worker - stopped", slog.Int("id", id))
+	transport.logger.Debug("Routine: decryption worker - started", slog.Int("id", id))
 
 	for elemsContainer := range transport.queue.decryption.c {
 		for _, elem := range elemsContainer.elems {
@@ -296,13 +300,16 @@ func (transport *Transport) RoutineDecryption(id int) {
 
 // Handles incoming packets related to handshake.
 func (transport *Transport) RoutineHandshake(id int) {
+	logger := transport.logger.With(slog.Int("id", id))
+
 	defer func() {
-		transport.log.Debug("Routine: handshake worker - stopped", "id", id)
+		logger.Debug("Routine: handshake worker - stopped")
 		transport.queue.encryption.wg.Done()
 	}()
-	transport.log.Debug("Routine: handshake worker - started", "id", id)
+	logger.Debug("Routine: handshake worker - started")
 
 	for elem := range transport.queue.handshake.c {
+		logger := logger.With(slog.String("from", elem.endpoint.DstToString()))
 
 		// handle cookie fields and ratelimiting
 
@@ -316,7 +323,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 			reader := bytes.NewReader(elem.packet)
 			err := binary.Read(reader, binary.LittleEndian, &reply)
 			if err != nil {
-				transport.log.Warn("Failed to decode cookie reply")
+				logger.Warn("Failed to decode cookie reply", slog.Any("error", err))
 				goto skip
 			}
 
@@ -331,9 +338,9 @@ func (transport *Transport) RoutineHandshake(id int) {
 			// consume reply
 
 			if peer := entry.peer; peer.isRunning.Load() {
-				transport.log.Debug("Receiving cookie response", "from", elem.endpoint.DstToString())
+				logger.Debug("Receiving cookie response")
 				if !peer.cookieGenerator.ConsumeReply(&reply) {
-					transport.log.Warn("Could not decrypt invalid cookie response")
+					logger.Warn("Could not decrypt invalid cookie response")
 				}
 			}
 
@@ -344,7 +351,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 			// check mac fields and maybe ratelimit
 
 			if !transport.cookieChecker.CheckMAC1(elem.packet) {
-				transport.log.Warn("Received packet with invalid mac1")
+				logger.Warn("Received packet with invalid mac1")
 				goto skip
 			}
 
@@ -356,7 +363,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 
 				if !transport.cookieChecker.CheckMAC2(elem.packet, elem.endpoint.DstToBytes()) {
 					if err := transport.SendHandshakeCookie(&elem); err != nil {
-						transport.log.Warn("Failed to send handshake cookie", "error", err)
+						logger.Warn("Failed to send handshake cookie", slog.Any("error", err))
 					}
 					goto skip
 				}
@@ -369,7 +376,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 			}
 
 		default:
-			transport.log.Warn("Invalid packet ended up in the handshake queue")
+			logger.Warn("Invalid packet ended up in the handshake queue")
 			goto skip
 		}
 
@@ -384,7 +391,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 			reader := bytes.NewReader(elem.packet)
 			err := binary.Read(reader, binary.LittleEndian, &msg)
 			if err != nil {
-				transport.log.Warn("Failed to decode initiation message")
+				logger.Warn("Failed to decode initiation message", slog.Any("error", err))
 				goto skip
 			}
 
@@ -392,7 +399,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 
 			peer := transport.ConsumeMessageInitiation(&msg)
 			if peer == nil {
-				transport.log.Warn("Received invalid initiation message", "from", elem.endpoint.DstToString())
+				logger.Warn("Received invalid initiation message")
 				goto skip
 			}
 
@@ -404,11 +411,11 @@ func (transport *Transport) RoutineHandshake(id int) {
 			// update endpoint
 			peer.SetEndpoint(elem.endpoint)
 
-			transport.log.Debug("Received handshake initiation", "peer", peer)
+			logger.Debug("Received handshake initiation", slog.String("peer", peer.String()))
 			peer.rxBytes.Add(uint64(len(elem.packet)))
 
 			if err := peer.SendHandshakeResponse(); err != nil {
-				transport.log.Error("Failed to send handshake response", "error", err)
+				logger.Error("Failed to send handshake response", slog.Any("error", err))
 				goto skip
 			}
 
@@ -420,7 +427,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 			reader := bytes.NewReader(elem.packet)
 			err := binary.Read(reader, binary.LittleEndian, &msg)
 			if err != nil {
-				transport.log.Warn("Failed to decode response message", "error", err)
+				logger.Warn("Failed to decode response message", slog.Any("error", err))
 				goto skip
 			}
 
@@ -428,14 +435,16 @@ func (transport *Transport) RoutineHandshake(id int) {
 
 			peer := transport.ConsumeMessageResponse(&msg)
 			if peer == nil {
-				transport.log.Warn("Received invalid response message", "from", elem.endpoint.DstToString())
+				logger.Warn("Received invalid response message")
 				goto skip
 			}
+
+			logger := logger.With(slog.String("peer", peer.String()))
 
 			// update endpoint
 			peer.SetEndpoint(elem.endpoint)
 
-			transport.log.Debug("Received handshake response", "peer", peer)
+			logger.Debug("Received handshake response")
 			peer.rxBytes.Add(uint64(len(elem.packet)))
 
 			// update timers
@@ -445,14 +454,14 @@ func (transport *Transport) RoutineHandshake(id int) {
 
 			// derive keypair
 			if err := peer.BeginSymmetricSession(); err != nil {
-				transport.log.Error("Failed to derive keypair", "peer", peer, "error", err)
+				logger.Error("Failed to derive keypair", slog.Any("error", err))
 				goto skip
 			}
 
 			peer.timersSessionDerived()
 			peer.timersHandshakeComplete()
 			if err := peer.SendKeepalive(); err != nil {
-				transport.log.Error("Failed to send keepalive", "peer", peer, "error", err)
+				logger.Error("Failed to send keepalive", slog.Any("error", err))
 				goto skip
 			}
 		}
@@ -463,11 +472,14 @@ func (transport *Transport) RoutineHandshake(id int) {
 
 func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 	t := peer.transport
+
+	logger := t.logger.With(slog.String("peer", peer.String()))
+
 	defer func() {
-		t.log.Debug("Routine: sequential receiver - stopped", "peer", peer)
+		logger.Debug("Routine: sequential receiver - stopped")
 		peer.stopping.Done()
 	}()
-	t.log.Debug("Routine: sequential receiver - started", "peer", peer)
+	logger.Debug("Routine: sequential receiver - started")
 
 	bufs := make([][]byte, 0, maxBatchSize)
 
@@ -499,14 +511,14 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 				peer.SetEndpoint(elem.endpoint)
 				peer.timersHandshakeComplete()
 				if err := peer.SendStagedPackets(); err != nil {
-					t.log.Warn("Failed to send staged packets", "peer", peer, "error", err)
+					logger.Warn("Failed to send staged packets", slog.Any("error", err))
 					continue
 				}
 			}
 			rxBytesLen += uint64(len(elem.packet) + MinMessageSize)
 
 			if len(elem.packet) == 0 {
-				t.log.Debug("Receiving keepalive packet", "peer", peer)
+				logger.Debug("Receiving keepalive packet")
 				continue
 			}
 			dataPacketReceived = true
@@ -518,7 +530,7 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 		if validTailPacket >= 0 {
 			peer.SetEndpoint(elemsContainer.elems[validTailPacket].endpoint)
 			if err := peer.keepKeyFreshReceiving(); err != nil {
-				t.log.Warn("Failed to keep key fresh", "peer", peer, "error", err)
+				logger.Warn("Failed to keep key fresh", slog.Any("error", err))
 				continue
 			}
 			peer.timersAnyAuthenticatedPacketTraversal()
@@ -530,7 +542,7 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 		if len(bufs) > 0 {
 			_, err := t.sourceSink.Write(bufs, peers, MessageTransportOffsetContent)
 			if err != nil && !t.isClosed() {
-				t.log.Error("Failed to write packets to source sink", "peer", peer, "error", err)
+				logger.Error("Failed to write packets to source sink", slog.Any("error", err))
 			}
 		}
 		for _, elem := range elemsContainer.elems {

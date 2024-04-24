@@ -44,7 +44,7 @@ func TestValidateSourceAddress(t *testing.T) {
 	_, ipv6Net, err := stdnet.ParseCIDR("2001:db9::/64")
 	require.NoError(t, err)
 
-	peers.add(&peer{
+	peers.add(&Peer{
 		name:      "gw",
 		publicKey: gwPK,
 		addrs: []netip.Addr{
@@ -54,7 +54,7 @@ func TestValidateSourceAddress(t *testing.T) {
 		destinations: []*stdnet.IPNet{ipv4Net, ipv6Net},
 	})
 
-	peers.add(&peer{
+	peers.add(&Peer{
 		name:      "peer1",
 		publicKey: peer1PK,
 		addrs: []netip.Addr{
@@ -64,7 +64,7 @@ func TestValidateSourceAddress(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	peers.add(&peer{
+	peers.add(&Peer{
 		name:      "peer2",
 		publicKey: peer2PK,
 		addrs: []netip.Addr{

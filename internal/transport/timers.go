@@ -32,6 +32,7 @@
 package transport
 
 import (
+	"log/slog"
 	"sync"
 	"time"
 	_ "unsafe"
@@ -102,8 +103,8 @@ func (peer *Peer) timersActive() bool {
 
 func expiredRetransmitHandshake(peer *Peer) {
 	if peer.timers.handshakeAttempts.Load() > MaxTimerHandshakes {
-		peer.transport.log.Error("Handshake did not complete after multiple attempts, giving up",
-			"peer", peer, "maxAttempts", MaxTimerHandshakes+2)
+		peer.transport.logger.Error("Handshake did not complete after multiple attempts, giving up",
+			slog.String("peer", peer.String()), slog.Int("maxAttempts", MaxTimerHandshakes+2))
 
 		if peer.timersActive() {
 			peer.timers.sendKeepalive.Del()
@@ -122,20 +123,21 @@ func expiredRetransmitHandshake(peer *Peer) {
 		}
 	} else {
 		peer.timers.handshakeAttempts.Add(1)
-		peer.transport.log.Warn("Handshake did not complete within timeout, retrying",
-			"peer", peer, "timeout", int(RekeyTimeout.Seconds()), "try", peer.timers.handshakeAttempts.Load()+1)
+		peer.transport.logger.Warn("Handshake did not complete within timeout, retrying",
+			slog.String("peer", peer.String()), slog.Int("timeout", int(RekeyTimeout.Seconds())),
+			slog.Int("try", int(peer.timers.handshakeAttempts.Load()+1)))
 
 		if err := peer.SendHandshakeInitiation(true); err != nil {
-			peer.transport.log.Error("Failed to retransmit handshake initiation",
-				"peer", peer, "error", err)
+			peer.transport.logger.Error("Failed to retransmit handshake initiation",
+				slog.String("peer", peer.String()), slog.Any("error", err))
 		}
 	}
 }
 
 func expiredSendKeepalive(peer *Peer) {
 	if err := peer.SendKeepalive(); err != nil {
-		peer.transport.log.Error("Failed to send keepalive",
-			"peer", peer, "error", err)
+		peer.transport.logger.Error("Failed to send keepalive",
+			slog.String("peer", peer.String()), slog.Any("error", err))
 	}
 
 	if peer.timers.needAnotherKeepalive.Load() {
@@ -147,25 +149,25 @@ func expiredSendKeepalive(peer *Peer) {
 }
 
 func expiredNewHandshake(peer *Peer) {
-	peer.transport.log.Debug("Retrying handshake because we stopped hearing back",
-		"peer", peer, "timeout", int((KeepaliveTimeout + RekeyTimeout).Seconds()))
+	peer.transport.logger.Debug("Retrying handshake because we stopped hearing back",
+		slog.String("peer", peer.String()), slog.Int("timeout", int(KeepaliveTimeout.Seconds())))
 	if err := peer.SendHandshakeInitiation(false); err != nil {
-		peer.transport.log.Error("Failed to retransmit handshake initiation",
-			"peer", peer, "error", err)
+		peer.transport.logger.Error("Failed to retransmit handshake initiation",
+			slog.String("peer", peer.String()), slog.Any("error", err))
 	}
 }
 
 func expiredZeroKeyMaterial(peer *Peer) {
-	peer.transport.log.Debug("Removing all keys, since we haven't received a new one in time",
-		"peer", peer, "timeout", int((RejectAfterTime * 3).Seconds()))
+	peer.transport.logger.Debug("Removing all keys, since we haven't received a new one in time",
+		slog.String("peer", peer.String()), slog.Int("timeout", int((RejectAfterTime*3).Seconds())))
 	peer.ZeroAndFlushAll()
 }
 
 func expiredKeepAlive(peer *Peer) {
 	if peer.keepAliveInterval.Load() > 0 {
 		if err := peer.SendKeepalive(); err != nil {
-			peer.transport.log.Error("Failed to send keepalive",
-				"peer", peer, "error", err)
+			peer.transport.logger.Error("Failed to send keepalive",
+				slog.String("peer", peer.String()), slog.Any("error", err))
 		}
 	}
 }

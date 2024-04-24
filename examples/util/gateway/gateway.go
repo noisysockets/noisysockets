@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	stdnet "net"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/noisysockets/noisysockets/types"
 	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 // Start starts a WireGuard gateway in a Docker container, this is used in place of a real WireGuard server for testing examples.
@@ -69,7 +69,7 @@ func Start(ctx context.Context, gwPrivateKey types.NoisePrivateKey, clientPublic
 
 	gwReq := testcontainers.ContainerRequest{
 		Image:        "ghcr.io/noisysockets/gateway:v0.1.0",
-		ExposedPorts: []string{"51820/udp"},
+		ExposedPorts: []string{"51820/udp", "53/tcp"},
 		Files: []testcontainers.ContainerFile{
 			{HostFilePath: wgConfPath, ContainerFilePath: "/etc/wireguard/wg0.conf", FileMode: 0o400},
 		},
@@ -83,6 +83,8 @@ func Start(ctx context.Context, gwPrivateKey types.NoisePrivateKey, clientPublic
 
 			hostConfig.Binds = append(hostConfig.Binds, "/dev/net/tun:/dev/net/tun")
 		},
+		// Wait for embedded DNS server to be ready.
+		WaitingFor: wait.ForListeningPort("53"),
 	}
 
 	gwContainer, err = testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -93,9 +95,6 @@ func Start(ctx context.Context, gwPrivateKey types.NoisePrivateKey, clientPublic
 		err = fmt.Errorf("failed to start wireguard gateway: %w", err)
 		return
 	}
-
-	// Time for everything to settle down.
-	time.Sleep(3 * time.Second)
 
 	wgHost, err := gwContainer.Host(ctx)
 	if err != nil {

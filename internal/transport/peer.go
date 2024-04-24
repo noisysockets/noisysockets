@@ -34,6 +34,7 @@ package transport
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -183,7 +184,7 @@ func (peer *Peer) Start() {
 	}
 
 	transport := peer.transport
-	transport.log.Debug("Starting", "peer", peer)
+	transport.logger.Debug("Starting", slog.String("peer", peer.String()))
 
 	// reset routine state
 	peer.stopping.Wait()
@@ -262,7 +263,7 @@ func (peer *Peer) Stop() {
 		return
 	}
 
-	peer.transport.log.Debug("Stopping", "peer", peer)
+	peer.transport.logger.Debug("Stopping", slog.String("peer", peer.String()))
 
 	peer.timersStop()
 	// Signal that RoutineSequentialSender and RoutineSequentialReceiver should exit.

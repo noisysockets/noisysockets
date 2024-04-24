@@ -35,6 +35,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -111,7 +112,7 @@ func (peer *Peer) SendKeepalive() error {
 		elemsContainer.elems = append(elemsContainer.elems, elem)
 		select {
 		case peer.queue.staged <- elemsContainer:
-			peer.transport.log.Debug("Sending keepalive packet", "peer", peer)
+			peer.transport.logger.Debug("Sending keepalive packet", slog.String("peer", peer.String()))
 		default:
 			peer.transport.PutMessageBuffer(elem.buffer)
 			peer.transport.PutOutboundElement(elem)
@@ -122,6 +123,8 @@ func (peer *Peer) SendKeepalive() error {
 }
 
 func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
+	logger := peer.transport.logger.With(slog.String("peer", peer.String()))
+
 	peer.endpoint.Lock()
 	endpoint := peer.endpoint.val
 	peer.endpoint.Unlock()
@@ -150,18 +153,18 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 	peer.handshake.lastSentHandshake = time.Now()
 	peer.handshake.mutex.Unlock()
 
-	peer.transport.log.Debug("Sending handshake initiation", "peer", peer)
+	logger.Debug("Sending handshake initiation")
 
 	msg, err := peer.transport.CreateMessageInitiation(peer)
 	if err != nil {
-		peer.transport.log.Error("Failed to create initiation message", "peer", peer, "error", err)
+		logger.Error("Failed to create initiation message", slog.Any("error", err))
 		return err
 	}
 
 	var buf [MessageInitiationSize]byte
 	writer := bytes.NewBuffer(buf[:0])
 	if err := binary.Write(writer, binary.LittleEndian, msg); err != nil {
-		peer.transport.log.Error("Failed to write initiation message", "peer", peer, "error", err)
+		logger.Error("Failed to write initiation message", slog.Any("error", err))
 		return err
 	}
 
@@ -173,7 +176,7 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 
 	err = peer.SendBuffers([][]byte{packet})
 	if err != nil {
-		peer.transport.log.Error("Failed to send handshake initiation", "peer", peer, "error", err)
+		logger.Error("Failed to send handshake initiation", slog.Any("error", err))
 	}
 	peer.timersHandshakeInitiated()
 
@@ -181,22 +184,24 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 }
 
 func (peer *Peer) SendHandshakeResponse() error {
+	logger := peer.transport.logger.With(slog.String("peer", peer.String()))
+
 	peer.handshake.mutex.Lock()
 	peer.handshake.lastSentHandshake = time.Now()
 	peer.handshake.mutex.Unlock()
 
-	peer.transport.log.Debug("Sending handshake response", "peer", peer)
+	logger.Debug("Sending handshake response")
 
 	response, err := peer.transport.CreateMessageResponse(peer)
 	if err != nil {
-		peer.transport.log.Error("Failed to create handshake response message", "peer", peer, "error", err)
+		logger.Error("Failed to create handshake response message", slog.Any("error", err))
 		return err
 	}
 
 	var buf [MessageResponseSize]byte
 	writer := bytes.NewBuffer(buf[:0])
 	if err := binary.Write(writer, binary.LittleEndian, response); err != nil {
-		peer.transport.log.Error("Failed to write handshake response message", "peer", peer, "error", err)
+		logger.Error("Failed to write handshake response message", slog.Any("error", err))
 		return err
 	}
 
@@ -205,7 +210,7 @@ func (peer *Peer) SendHandshakeResponse() error {
 
 	err = peer.BeginSymmetricSession()
 	if err != nil {
-		peer.transport.log.Error("Failed to derive keypair", "peer", peer, "error", err)
+		logger.Error("Failed to derive keypair", slog.Any("error", err))
 		return err
 	}
 
@@ -216,25 +221,27 @@ func (peer *Peer) SendHandshakeResponse() error {
 	// TODO: allocation could be avoided
 	err = peer.SendBuffers([][]byte{packet})
 	if err != nil {
-		peer.transport.log.Error("Failed to send handshake response", "peer", peer, "error", err)
+		logger.Error("Failed to send handshake response", slog.Any("error", err))
 	}
 	return err
 }
 
 func (transport *Transport) SendHandshakeCookie(initiatingElem *QueueHandshakeElement) error {
-	transport.log.Debug("Sending cookie response for denied handshake message for", "source", initiatingElem.endpoint.DstToString())
+	logger := transport.logger.With(slog.String("source", initiatingElem.endpoint.DstToString()))
+
+	logger.Debug("Sending cookie response for denied handshake message")
 
 	sender := binary.LittleEndian.Uint32(initiatingElem.packet[4:8])
 	reply, err := transport.cookieChecker.CreateReply(initiatingElem.packet, sender, initiatingElem.endpoint.DstToBytes())
 	if err != nil {
-		transport.log.Error("Failed to create cookie reply", "error", err)
+		logger.Error("Failed to create cookie reply", slog.Any("error", err))
 		return err
 	}
 
 	var buf [MessageCookieReplySize]byte
 	writer := bytes.NewBuffer(buf[:0])
 	if err := binary.Write(writer, binary.LittleEndian, reply); err != nil {
-		transport.log.Error("Failed to write cookie reply", "error", err)
+		logger.Error("Failed to write cookie reply", slog.Any("error", err))
 		return err
 	}
 
@@ -258,12 +265,12 @@ func (peer *Peer) keepKeyFreshSending() error {
 
 func (transport *Transport) RoutineReadFromSourceSink() {
 	defer func() {
-		transport.log.Debug("Routine: Source reader - stopped")
+		transport.logger.Debug("Routine: Source reader - stopped")
 		transport.state.stopping.Done()
 		transport.queue.encryption.wg.Done()
 	}()
 
-	transport.log.Debug("Routine: Source reader - started")
+	transport.logger.Debug("Routine: Source reader - started")
 
 	var (
 		batchSize   = transport.BatchSize()
@@ -323,7 +330,8 @@ func (transport *Transport) RoutineReadFromSourceSink() {
 			if peer.isRunning.Load() {
 				peer.StagePackets(elemsForPeer)
 				if err := peer.SendStagedPackets(); err != nil {
-					transport.log.Warn("Failed to send staged packets", "error", err)
+					transport.logger.Warn("Failed to send staged packets",
+						slog.String("peer", peer.String()), slog.Any("error", err))
 					continue
 				}
 			} else {
@@ -339,7 +347,8 @@ func (transport *Transport) RoutineReadFromSourceSink() {
 		if readErr != nil {
 			if !transport.isClosed() {
 				if !errors.Is(readErr, os.ErrClosed) {
-					transport.log.Error("Failed to read packet from source sink", "error", readErr)
+					transport.logger.Error("Failed to read packet from source sink",
+						slog.Any("error", readErr))
 				}
 				go transport.Close()
 			}
@@ -472,8 +481,10 @@ func (transport *Transport) RoutineEncryption(id int) {
 	var paddingZeros [PaddingMultiple]byte
 	var nonce [chacha20poly1305.NonceSize]byte
 
-	defer transport.log.Debug("Routine: encryption worker - stopped", "id", id)
-	transport.log.Debug("Routine: encryption worker - started", "id", id)
+	logger := transport.logger.With(slog.Int("id", id))
+
+	defer logger.Debug("Routine: encryption worker - stopped")
+	logger.Debug("Routine: encryption worker - started")
 
 	for elemsContainer := range transport.queue.encryption.c {
 		for _, elem := range elemsContainer.elems {
@@ -507,12 +518,14 @@ func (transport *Transport) RoutineEncryption(id int) {
 }
 
 func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
+	logger := peer.transport.logger.With(slog.String("peer", peer.String()))
+
 	transport := peer.transport
 	defer func() {
-		defer transport.log.Debug("Routine: sequential sender - stopped", "peer", peer)
+		defer logger.Debug("Routine: sequential sender - stopped")
 		peer.stopping.Done()
 	}()
-	transport.log.Debug("Routine: sequential sender - started", "peer", peer)
+	logger.Debug("Routine: sequential sender - started")
 
 	bufs := make([][]byte, 0, maxBatchSize)
 
@@ -559,17 +572,17 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 		if err != nil {
 			var errGSO conn.ErrUDPGSODisabled
 			if errors.As(err, &errGSO) {
-				transport.log.Warn("Failed to send data packets, retrying", "peer", peer, "error", err)
+				logger.Warn("Failed to send data packets, retrying", slog.Any("error", err))
 				err = errGSO.RetryErr
 			}
 		}
 		if err != nil {
-			transport.log.Error("Failed to send data packets", "peer", peer, "error", err)
+			logger.Error("Failed to send data packets", slog.Any("error", err))
 			continue
 		}
 
 		if err := peer.keepKeyFreshSending(); err != nil {
-			transport.log.Error("Failed to keep key fresh", "peer", peer, "error", err)
+			logger.Error("Failed to keep key fresh", slog.Any("error", err))
 		}
 	}
 }

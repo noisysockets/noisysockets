@@ -32,10 +32,21 @@ type Config struct {
 	IPs []string `yaml:"ips,omitempty" mapstructure:"ips,omitempty"`
 	// DNSServers is an optional list of DNS servers to use for host resolution.
 	DNSServers []string `yaml:"dnsServers,omitempty" mapstructure:"dnsServers,omitempty"`
-	// Peers is a list of known peers to which we can send and receive packets.
-	Peers []PeerConfig `yaml:"peers,omitempty" mapstructure:"peers,omitempty"`
 	// Routes is the routing table to use for the network.
 	Routes []RouteConfig `yaml:"routes,omitempty" mapstructure:"routes,omitempty"`
+	// Peers is a list of known peers to which we can send and receive packets.
+	Peers []PeerConfig `yaml:"peers,omitempty" mapstructure:"peers,omitempty"`
+}
+
+// RouteConfig is the configuration for a route in the routing table.
+type RouteConfig struct {
+	// Destinations is a list of CIDR blocks for which this route should be used.
+	// If not specified and Default is set then the default IPv4/IPv6 routes will be used.
+	Destinations []string `yaml:"destinations" mapstructure:"destinations"`
+	// Via is the name of the peer to use as the gateway for this route.
+	Via string `yaml:"via" mapstructure:"via"`
+	// Default indicates this route should be used as the default route.
+	Default bool `yaml:"default,omitempty" mapstructure:"default,omitempty"`
 }
 
 // PeerConfig is the configuration for a known wireguard peer.
@@ -50,17 +61,6 @@ type PeerConfig struct {
 	// IPs is a list of IP addresses assigned to the peer, this is optional for gateways.
 	// Traffic with a source IP not in this list will be dropped.
 	IPs []string `yaml:"ips,omitempty" mapstructure:"ips,omitempty"`
-}
-
-// RouteConfig is the configuration for a route in the routing table.
-type RouteConfig struct {
-	// Destinations is a list of CIDR blocks for which this route should be used.
-	// If not specified and Default is set then the default IPv4/IPv6 routes will be used.
-	Destinations []string `yaml:"destinations" mapstructure:"destinations"`
-	// Via is the name of the peer to use as the gateway for this route.
-	Via string `yaml:"via" mapstructure:"via"`
-	// Default indicates this route should be used as the default route.
-	Default bool `yaml:"default,omitempty" mapstructure:"default,omitempty"`
 }
 
 func (c Config) GetKind() string {
