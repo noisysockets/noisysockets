@@ -77,6 +77,7 @@ type NoisySocketsNetwork struct {
 	peers        *peerList
 	transport    *transport.Transport
 	stack        *stack.Stack
+	hostname     string
 	localAddrs   []netip.Addr
 	dnsServers   []netip.AddrPort
 	hasV4, hasV6 bool
@@ -122,16 +123,14 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 	}
 
 	// Add the local node to the list of peers.
-	hostname := conf.Name
-	if hostname == "" {
-		hostname = "localhost"
+	net.hostname = conf.Name
+	if net.hostname != "" {
+		net.peers.add(&Peer{
+			name:      net.hostname,
+			publicKey: publicKey,
+			addrs:     net.localAddrs,
+		})
 	}
-
-	net.peers.add(&Peer{
-		name:      hostname,
-		publicKey: publicKey,
-		addrs:     net.localAddrs,
-	})
 
 	net.dnsServers, err = parseIPPortList(conf.DNSServers)
 	if err != nil {
@@ -195,6 +194,10 @@ func (net *NoisySocketsNetwork) HasIPv4() bool {
 
 func (net *NoisySocketsNetwork) HasIPv6() bool {
 	return net.hasV6
+}
+
+func (net *NoisySocketsNetwork) Hostname() (string, error) {
+	return net.hostname, nil
 }
 
 func (net *NoisySocketsNetwork) LookupHost(host string) ([]string, error) {

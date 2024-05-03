@@ -24,6 +24,8 @@ type Network interface {
 	HasIPv4() bool
 	// HasIPv6 returns true if the network supports IPv6.
 	HasIPv6() bool
+	// Hostname returns the hostname of the local machine.
+	Hostname() (string, error)
 	// LookupHost looks up the given host using the local resolver. It returns a slice of that host's addresses.
 	LookupHost(host string) ([]string, error)
 	// Dial connects to the address on the named network.

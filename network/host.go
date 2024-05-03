@@ -12,6 +12,7 @@ package network
 import (
 	"context"
 	stdnet "net"
+	"os"
 )
 
 // Host returns a Network implementation that uses the standard library's network operations.
@@ -58,6 +59,10 @@ func (net *hostNetwork) HasIPv6() bool {
 	}
 
 	return *net.hasV6
+}
+
+func (net *hostNetwork) Hostname() (string, error) {
+	return os.Hostname()
 }
 
 func (net *hostNetwork) LookupHost(host string) ([]string, error) {

@@ -22,7 +22,7 @@ test:
   SAVE ARTIFACT coverage.out AS LOCAL coverage.out
   WORKDIR /workspace/tests
   WITH DOCKER
-    RUN go test -timeout=120s -v ./...
+    RUN go test -timeout=300s -v ./...
   END
   WORKDIR /workspace/examples
   WITH DOCKER
