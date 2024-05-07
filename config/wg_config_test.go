@@ -26,7 +26,7 @@ func TestFromINI(t *testing.T) {
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
-	err = config.SaveToYAML(&buf, conf)
+	err = config.ToYAML(&buf, conf)
 	require.NoError(t, err)
 
 	expected, err := os.ReadFile("testdata/config.yaml")
@@ -35,7 +35,7 @@ func TestFromINI(t *testing.T) {
 	require.YAMLEq(t, string(expected), buf.String())
 }
 
-func TestSaveToINI(t *testing.T) {
+func TestToINI(t *testing.T) {
 	configFile, err := os.Open("testdata/config.yaml")
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -46,7 +46,7 @@ func TestSaveToINI(t *testing.T) {
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
-	err = config.SaveToINI(&buf, conf)
+	err = config.ToINI(&buf, conf)
 	require.NoError(t, err)
 
 	expected, err := os.ReadFile("testdata/wg0.conf")

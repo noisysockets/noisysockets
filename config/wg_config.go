@@ -134,9 +134,9 @@ func FromINI(r io.Reader) (conf *latest.Config, err error) {
 	return conf, nil
 }
 
-// SaveToINI writes the given config object to the given writer in the WireGuard
+// ToINI writes the given config object to the given writer in the WireGuard
 // INI format. This should only be used for exporting configuration.
-func SaveToINI(w io.Writer, versionedConf types.Config) error {
+func ToINI(w io.Writer, versionedConf types.Config) error {
 	var conf *latest.Config
 	if versionedConf.GetAPIVersion() != latest.ApiVersion {
 		var err error

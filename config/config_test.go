@@ -37,7 +37,7 @@ func TestFromYAML(t *testing.T) {
 	require.Equal(t, "6cvvZyj+EVL4DHjUKeVF7EUBfgR2mJO4php2Gdv9FVw=", conf.Peers[0].PublicKey)
 }
 
-func TestSaveToYAML(t *testing.T) {
+func TestToYAML(t *testing.T) {
 	configFile, err := os.Open("testdata/config.yaml")
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -55,7 +55,7 @@ func TestSaveToYAML(t *testing.T) {
 		require.NoError(t, savedConfigFile.Close())
 	})
 
-	err = config.SaveToYAML(savedConfigFile, conf)
+	err = config.ToYAML(savedConfigFile, conf)
 	require.NoError(t, err)
 
 	_, err = savedConfigFile.Seek(0, io.SeekStart)

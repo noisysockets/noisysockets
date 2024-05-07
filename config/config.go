@@ -59,8 +59,8 @@ func FromYAML(r io.Reader) (conf *latest.Config, err error) {
 	return conf, nil
 }
 
-// SaveToYAML writes the given config object to the given writer.
-func SaveToYAML(w io.Writer, versionedConf types.Config) error {
+// ToYAML writes the given config object to the given writer.
+func ToYAML(w io.Writer, versionedConf types.Config) error {
 	var conf *latest.Config
 	if versionedConf.GetAPIVersion() != latest.ApiVersion {
 		var err error
