@@ -6,8 +6,8 @@ ips:
 dnsServers:
 - 10.7.0.1
 routes:
-- via: gateway
-  default: true
+- destination: 0.0.0.0/0
+  via: gateway
 peers:
 - name: gateway
   publicKey: 6cvvZyj+EVL4DHjUKeVF7EUBfgR2mJO4php2Gdv9FVw=

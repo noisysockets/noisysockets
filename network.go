@@ -577,9 +577,8 @@ func (net *NoisySocketsNetwork) ListPeers() []types.NoisePublicKey {
 // AddRoute adds a routing table entry for the network.
 func (net *NoisySocketsNetwork) AddRoute(routeConf v1alpha1.RouteConfig) error {
 	net.logger.Debug("Adding route",
-		slog.Any("destinations", routeConf.Destinations),
-		slog.String("via", routeConf.Via),
-		slog.Bool("default", routeConf.Default))
+		slog.Any("destination", routeConf.Destination),
+		slog.String("via", routeConf.Via))
 
 	p, ok := net.peers.lookupByName(routeConf.Via)
 	if !ok {
@@ -588,33 +587,14 @@ func (net *NoisySocketsNetwork) AddRoute(routeConf v1alpha1.RouteConfig) error {
 
 	p.Lock()
 
-	var destinations []*stdnet.IPNet
-	if len(routeConf.Destinations) > 0 {
-		var err error
-		destinations, err = parseCIDRList(routeConf.Destinations)
-		if err != nil {
-			p.Unlock()
+	destinationCIDR, err := netip.ParsePrefix(routeConf.Destination)
+	if err != nil {
+		p.Unlock()
 
-			return fmt.Errorf("could not parse destinations: %w", err)
-		}
-	} else if routeConf.Default {
-		// Use the default route.
-		if net.hasV4 {
-			destinations = append(destinations, &stdnet.IPNet{
-				IP:   stdnet.IPv4zero,
-				Mask: stdnet.CIDRMask(0, 32),
-			})
-		}
-		if net.hasV6 {
-			destinations = append(destinations, &stdnet.IPNet{
-				IP:   stdnet.IPv6zero,
-				Mask: stdnet.CIDRMask(0, 128),
-			})
-		}
+		return fmt.Errorf("could not parse destination: %w", err)
 	}
 
-	p.defaultGateway = routeConf.Default
-	p.destinations = dedupNetworks(append(p.destinations, destinations...))
+	p.gatewayForCIDRs = dedupNetworks(append(p.gatewayForCIDRs, destinationCIDR))
 
 	p.Unlock()
 
@@ -622,24 +602,19 @@ func (net *NoisySocketsNetwork) AddRoute(routeConf v1alpha1.RouteConfig) error {
 }
 
 // RemoveRoute removes a routing table entry for the network.
-func (net *NoisySocketsNetwork) RemoveRoute(destination *stdnet.IPNet) error {
-	net.logger.Debug("Removing route", slog.String("destination", destination.String()))
+func (net *NoisySocketsNetwork) RemoveRoute(destinationCIDR netip.Prefix) error {
+	net.logger.Debug("Removing route", slog.String("destination", destinationCIDR.String()))
 
-	firstAddr, ok := netip.AddrFromSlice(destination.IP)
+	p, ok := net.peers.lookupByAddress(destinationCIDR.Addr())
 	if !ok {
-		return fmt.Errorf("could not parse destination address: %v", destination)
-	}
-
-	p, ok := net.peers.lookupByAddress(firstAddr)
-	if !ok {
-		return fmt.Errorf("could not find peer for destination address: %v", destination)
+		return fmt.Errorf("could not find peer for destination address: %v", destinationCIDR)
 	}
 
 	p.Lock()
 
-	for i, dest := range p.destinations {
-		if dest.String() == destination.String() {
-			p.destinations = append(p.destinations[:i], p.destinations[i+1:]...)
+	for i, cidr := range p.gatewayForCIDRs {
+		if cidr.String() == destinationCIDR.String() {
+			p.gatewayForCIDRs = append(p.gatewayForCIDRs[:i], p.gatewayForCIDRs[i+1:]...)
 			break
 		}
 	}
@@ -700,16 +675,24 @@ func (net *NoisySocketsNetwork) refreshAddressesAndRoutes() error {
 		}
 	}
 
-	var explicitDefaultGateway bool
 	var routes []tcpip.Route
+
+	if net.hasV4 {
+		routes = append(routes, tcpip.Route{
+			NIC:         1,
+			Destination: header.IPv4EmptySubnet,
+		})
+	}
+	if net.hasV6 {
+		routes = append(routes, tcpip.Route{
+			NIC:         1,
+			Destination: header.IPv6EmptySubnet,
+		})
+	}
 
 	err := net.peers.forEach(func(p *Peer) error {
 		p.Lock()
 		defer p.Unlock()
-
-		if p.defaultGateway {
-			explicitDefaultGateway = true
-		}
 
 		var addrV4, addrV6 tcpip.Address
 		for _, addr := range p.addrs {
@@ -720,9 +703,10 @@ func (net *NoisySocketsNetwork) refreshAddressesAndRoutes() error {
 			}
 		}
 
-		for _, destination := range p.destinations {
-			if net.hasV4 && destination.IP.To4() != nil {
-				dstNetwork, err := tcpip.NewSubnet(tcpip.AddrFrom4Slice(destination.IP.To4()), tcpip.MaskFromBytes(destination.Mask))
+		for _, cidr := range p.gatewayForCIDRs {
+			if net.hasV4 && cidr.Addr().Is4() {
+				destinationNetwork, err := tcpip.NewSubnet(tcpip.AddrFrom4Slice(cidr.Addr().AsSlice()),
+					tcpip.MaskFromBytes(cidr.Masked().Addr().AsSlice()))
 				if err != nil {
 					return fmt.Errorf("could not parse ipv4 subnet: %v", err)
 				}
@@ -730,16 +714,16 @@ func (net *NoisySocketsNetwork) refreshAddressesAndRoutes() error {
 				net.logger.Debug("Registering ipv4 route",
 					slog.String("via", p.name),
 					slog.String("addr", addrV4.String()),
-					slog.String("destination", dstNetwork.String()),
-					slog.Bool("default", p.defaultGateway))
+					slog.String("destination", destinationNetwork.String()))
 
 				routes = append(routes, tcpip.Route{
 					NIC:         1,
-					Destination: dstNetwork,
+					Destination: destinationNetwork,
 					Gateway:     addrV4,
 				})
-			} else if net.hasV6 && destination.IP.To16() != nil {
-				dstNetwork, err := tcpip.NewSubnet(tcpip.AddrFrom16Slice(destination.IP.To16()), tcpip.MaskFromBytes(destination.Mask))
+			} else if net.hasV6 && cidr.Addr().Is6() {
+				destinationNetwork, err := tcpip.NewSubnet(tcpip.AddrFrom16Slice(cidr.Addr().AsSlice()),
+					tcpip.MaskFromBytes(cidr.Masked().Addr().AsSlice()))
 				if err != nil {
 					return fmt.Errorf("could not parse ipv6 subnet: %v", err)
 				}
@@ -747,12 +731,11 @@ func (net *NoisySocketsNetwork) refreshAddressesAndRoutes() error {
 				net.logger.Debug("Registering ipv6 route",
 					slog.String("via", p.name),
 					slog.String("addr", addrV6.String()),
-					slog.String("destination", dstNetwork.String()),
-					slog.Bool("default", p.defaultGateway))
+					slog.String("destination", destinationNetwork.String()))
 
 				routes = append(routes, tcpip.Route{
 					NIC:         1,
-					Destination: dstNetwork,
+					Destination: destinationNetwork,
 					Gateway:     addrV6,
 				})
 			}
@@ -762,24 +745,6 @@ func (net *NoisySocketsNetwork) refreshAddressesAndRoutes() error {
 	})
 	if err != nil {
 		return fmt.Errorf("could not register routes: %v", err)
-	}
-
-	// Add a dummy default route if no default gateway was specified.
-	if !explicitDefaultGateway {
-		net.logger.Debug("Registering dummy default route")
-
-		if net.hasV4 {
-			routes = append(routes, tcpip.Route{
-				NIC:         1,
-				Destination: header.IPv4EmptySubnet,
-			})
-		}
-		if net.hasV6 {
-			routes = append(routes, tcpip.Route{
-				NIC:         1,
-				Destination: header.IPv6EmptySubnet,
-			})
-		}
 	}
 
 	net.stack.SetRouteTable(routes)

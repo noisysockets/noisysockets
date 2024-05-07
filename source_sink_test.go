@@ -10,7 +10,6 @@
 package noisysockets
 
 import (
-	stdnet "net"
 	"net/netip"
 	"testing"
 
@@ -38,10 +37,10 @@ func TestValidateSourceAddress(t *testing.T) {
 
 	peers := newPeerList()
 
-	_, ipv4Net, err := stdnet.ParseCIDR("192.168.2.0/24")
+	ipv4Net, err := netip.ParsePrefix("192.168.2.0/24")
 	require.NoError(t, err)
 
-	_, ipv6Net, err := stdnet.ParseCIDR("2001:db9::/64")
+	ipv6Net, err := netip.ParsePrefix("2001:db9::/64")
 	require.NoError(t, err)
 
 	peers.add(&Peer{
@@ -51,7 +50,7 @@ func TestValidateSourceAddress(t *testing.T) {
 			netip.MustParseAddr("192.168.1.1"),
 			netip.MustParseAddr("2001:db8::1"),
 		},
-		destinations: []*stdnet.IPNet{ipv4Net, ipv6Net},
+		gatewayForCIDRs: []netip.Prefix{ipv4Net, ipv6Net},
 	})
 
 	peers.add(&Peer{

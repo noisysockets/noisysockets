@@ -11,7 +11,6 @@ package noisysockets
 
 import (
 	"fmt"
-	stdnet "net"
 	"net/netip"
 	"sync"
 
@@ -28,11 +27,10 @@ var (
 type Peer struct {
 	sync.Mutex
 	*transport.Peer
-	name           string
-	publicKey      types.NoisePublicKey
-	addrs          []netip.Addr
-	defaultGateway bool
-	destinations   []*stdnet.IPNet
+	name            string
+	publicKey       types.NoisePublicKey
+	addrs           []netip.Addr
+	gatewayForCIDRs []netip.Prefix
 }
 
 // Name returns the human friendly name of the peer.

@@ -55,23 +55,9 @@ func parseIPPortList(ipPorts []string) ([]netip.AddrPort, error) {
 	return addrPorts, nil
 }
 
-func parseCIDRList(networks []string) ([]*stdnet.IPNet, error) {
-	var cidrs []*stdnet.IPNet
-	for _, network := range networks {
-		_, cidr, err := stdnet.ParseCIDR(network)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse CIDR: %w", err)
-		}
-
-		cidrs = append(cidrs, cidr)
-	}
-
-	return cidrs, nil
-}
-
-func dedupNetworks(networks []*stdnet.IPNet) []*stdnet.IPNet {
+func dedupNetworks(networks []netip.Prefix) []netip.Prefix {
 	seen := make(map[string]bool)
-	var deduped []*stdnet.IPNet
+	var deduped []netip.Prefix
 	for _, net := range networks {
 		key := net.String()
 		if _, ok := seen[key]; ok {

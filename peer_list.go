@@ -10,7 +10,6 @@
 package noisysockets
 
 import (
-	stdnet "net"
 	"net/netip"
 	"sync"
 
@@ -79,15 +78,25 @@ func (pl *peerList) lookupByAddress(addr netip.Addr) (*Peer, bool) {
 	}
 
 	// Perhaps we have a gateway peer that matches.
+	var gatewayPeer *Peer
+
+	maxPrefixLength := -1
 	for _, p := range pl.m {
 		p.Lock()
-		for _, n := range p.destinations {
-			if n.Contains(stdnet.IP(addr.AsSlice())) {
-				p.Unlock()
-				return p, true
+		for _, cidr := range p.gatewayForCIDRs {
+			if cidr.Contains(addr) {
+				prefixLength := cidr.Bits()
+				if prefixLength > maxPrefixLength {
+					gatewayPeer = p
+					maxPrefixLength = prefixLength
+				}
 			}
 		}
 		p.Unlock()
+	}
+
+	if gatewayPeer != nil {
+		return gatewayPeer, true
 	}
 
 	return nil, false

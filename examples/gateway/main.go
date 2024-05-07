@@ -55,8 +55,8 @@ func main() {
 		DNSServers: []string{"10.0.0.1"},
 		Routes: []v1alpha1.RouteConfig{
 			{
-				Via:     "gateway",
-				Default: true,
+				Destination: "0.0.0.0/0",
+				Via:         "gateway",
 			},
 		},
 		Peers: []v1alpha1.PeerConfig{
@@ -64,7 +64,10 @@ func main() {
 				Name:      "gateway",
 				PublicKey: gatewayPublicKey.String(),
 				Endpoint:  gatewayHostPort,
-				IPs:       []string{"10.0.0.1"},
+				// Normally we wouldn't need to give the gateway peer any IPs, but
+				// since its doing dual duty as the DNS server, we need to give it
+				// a routable IP.
+				IPs: []string{"10.0.0.1"},
 			},
 		},
 	})

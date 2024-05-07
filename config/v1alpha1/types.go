@@ -40,13 +40,10 @@ type Config struct {
 
 // RouteConfig is the configuration for a route in the routing table.
 type RouteConfig struct {
-	// Destinations is a list of CIDR blocks for which this route should be used.
-	// If not specified and Default is set then the default IPv4/IPv6 routes will be used.
-	Destinations []string `yaml:"destinations" mapstructure:"destinations"`
+	// Destinations is a CIDR block for which this route should be used.
+	Destination string `yaml:"destination" mapstructure:"destination"`
 	// Via is the name of the peer to use as the gateway for this route.
 	Via string `yaml:"via" mapstructure:"via"`
-	// Default indicates this route should be used as the default route.
-	Default bool `yaml:"default,omitempty" mapstructure:"default,omitempty"`
 }
 
 // PeerConfig is the configuration for a known wireguard peer.

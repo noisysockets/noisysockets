@@ -1,19 +1,18 @@
 apiVersion: noisysockets.github.com/v1alpha1
 kind: Config
-listenPort: 12346
+listenPort: 12345
 privateKey: SFN1gntnAutVFefwrPDlM1W2/LGWaRSn2hq06TvL2GY=
 ips:
 - 10.7.0.2
 routes:
-- destinations: 
-  - 192.168.0.0/24
+- destination: 192.168.0.0/24
   via: gateway
 peers:
 - name: server
   publicKey: 6cvvZyj+EVL4DHjUKeVF7EUBfgR2mJO4php2Gdv9FVw=
-  endpoint: 127.0.0.1:12345
+  endpoint: 127.0.0.1:12346
   ips:
   - 10.7.0.1
 - name: gateway
   publicKey: aVHVSvdp1s9Cmw1r7XJgBSjXsSMpXdsskiuwPVYUdCk=
-  endpoint: 127.0.0.1:12346
+  endpoint: 127.0.0.1:12347
