@@ -45,7 +45,6 @@ import (
 
 	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/netstack/pkg/tcpip/adapters/gonet"
-	"github.com/noisysockets/netstack/pkg/tcpip/header"
 	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv4"
 	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv6"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
@@ -137,7 +136,8 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 		return nil, fmt.Errorf("could not parse DNS servers: %w", err)
 	}
 
-	sourceSink, err := newSourceSink(logger, net.peers, net.stack, net.localAddrs)
+	sourceSink, err := newSourceSink(logger, net.peers, net.stack,
+		net.localAddrs, net.hasV4, net.hasV6)
 	if err != nil {
 		return nil, fmt.Errorf("could not create source sink: %w", err)
 	}
@@ -159,14 +159,14 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 
 	// Add routes.
 	for _, routeConf := range conf.Routes {
-		if err := net.AddRoute(routeConf); err != nil {
+		destinationCIDR, err := netip.ParsePrefix(routeConf.Destination)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse route destination: %w", err)
+		}
+
+		if err := net.AddRoute(destinationCIDR, routeConf.Via); err != nil {
 			return nil, fmt.Errorf("could not add route: %w", err)
 		}
-	}
-
-	// Refresh addresses and routes.
-	if err := net.refreshAddressesAndRoutes(); err != nil {
-		return nil, fmt.Errorf("could not refresh addresses and routes: %w", err)
 	}
 
 	logger.Debug("Bringing transport up")
@@ -575,30 +575,21 @@ func (net *NoisySocketsNetwork) ListPeers() []types.NoisePublicKey {
 }
 
 // AddRoute adds a routing table entry for the network.
-func (net *NoisySocketsNetwork) AddRoute(routeConf v1alpha1.RouteConfig) error {
+func (net *NoisySocketsNetwork) AddRoute(destinationCIDR netip.Prefix, viaPeerName string) error {
 	net.logger.Debug("Adding route",
-		slog.Any("destination", routeConf.Destination),
-		slog.String("via", routeConf.Via))
+		slog.String("destination", destinationCIDR.String()),
+		slog.String("via", viaPeerName))
 
-	p, ok := net.peers.lookupByName(routeConf.Via)
+	p, ok := net.peers.lookupByName(viaPeerName)
 	if !ok {
 		return ErrUnknownPeer
 	}
 
 	p.Lock()
-
-	destinationCIDR, err := netip.ParsePrefix(routeConf.Destination)
-	if err != nil {
-		p.Unlock()
-
-		return fmt.Errorf("could not parse destination: %w", err)
-	}
-
 	p.gatewayForCIDRs = dedupNetworks(append(p.gatewayForCIDRs, destinationCIDR))
-
 	p.Unlock()
 
-	return net.refreshAddressesAndRoutes()
+	return nil
 }
 
 // RemoveRoute removes a routing table entry for the network.
@@ -611,143 +602,13 @@ func (net *NoisySocketsNetwork) RemoveRoute(destinationCIDR netip.Prefix) error 
 	}
 
 	p.Lock()
-
 	for i, cidr := range p.gatewayForCIDRs {
 		if cidr.String() == destinationCIDR.String() {
 			p.gatewayForCIDRs = append(p.gatewayForCIDRs[:i], p.gatewayForCIDRs[i+1:]...)
 			break
 		}
 	}
-
 	p.Unlock()
-
-	return net.refreshAddressesAndRoutes()
-}
-
-func (net *NoisySocketsNetwork) refreshAddressesAndRoutes() error {
-	net.logger.Debug("Refreshing addresses and routes")
-
-	currentLocalAddrs := make(map[netip.Addr]bool)
-	for _, addr := range net.localAddrs {
-		currentLocalAddrs[addr] = true
-	}
-
-	existingLocalAddrs := make(map[netip.Addr]bool)
-	for _, addr := range net.stack.AllAddresses()[1] {
-		netipAddr, ok := netip.AddrFromSlice(addr.AddressWithPrefix.Address.AsSlice())
-		if !ok {
-			continue
-		}
-
-		existingLocalAddrs[netipAddr] = true
-	}
-
-	// Remove any addresses that are no longer in the configuration.
-	for addr := range existingLocalAddrs {
-		if _, ok := currentLocalAddrs[addr]; !ok {
-			net.logger.Debug("Removing local address", slog.String("address", addr.String()))
-
-			/*	if err := net.stack.RemoveAddress(1, tcpip.AddrFromSlice(addr.AsSlice())); err != nil {
-				return fmt.Errorf("could not remove existing address: %v", err)
-			}*/
-		}
-	}
-
-	for _, addr := range net.localAddrs {
-		if _, ok := existingLocalAddrs[addr]; !ok {
-			var protoNumber tcpip.NetworkProtocolNumber
-			if addr.Is4() {
-				protoNumber = ipv4.ProtocolNumber
-			} else if addr.Is6() {
-				protoNumber = ipv6.ProtocolNumber
-			}
-
-			protoAddr := tcpip.ProtocolAddress{
-				Protocol:          protoNumber,
-				AddressWithPrefix: tcpip.AddrFromSlice(addr.AsSlice()).WithPrefix(),
-			}
-
-			net.logger.Debug("Adding local address", slog.String("address", addr.String()))
-
-			if err := net.stack.AddProtocolAddress(1, protoAddr, stack.AddressProperties{}); err != nil {
-				return fmt.Errorf("could not add address: %v", err)
-			}
-		}
-	}
-
-	var routes []tcpip.Route
-
-	if net.hasV4 {
-		routes = append(routes, tcpip.Route{
-			NIC:         1,
-			Destination: header.IPv4EmptySubnet,
-		})
-	}
-	if net.hasV6 {
-		routes = append(routes, tcpip.Route{
-			NIC:         1,
-			Destination: header.IPv6EmptySubnet,
-		})
-	}
-
-	err := net.peers.forEach(func(p *Peer) error {
-		p.Lock()
-		defer p.Unlock()
-
-		var addrV4, addrV6 tcpip.Address
-		for _, addr := range p.addrs {
-			if net.hasV4 && addr.Is4() {
-				addrV4 = tcpip.AddrFromSlice(addr.AsSlice())
-			} else if net.hasV6 && addr.Is6() {
-				addrV6 = tcpip.AddrFromSlice(addr.AsSlice())
-			}
-		}
-
-		for _, cidr := range p.gatewayForCIDRs {
-			if net.hasV4 && cidr.Addr().Is4() {
-				destinationNetwork, err := tcpip.NewSubnet(tcpip.AddrFrom4Slice(cidr.Addr().AsSlice()),
-					tcpip.MaskFromBytes(cidr.Masked().Addr().AsSlice()))
-				if err != nil {
-					return fmt.Errorf("could not parse ipv4 subnet: %v", err)
-				}
-
-				net.logger.Debug("Registering ipv4 route",
-					slog.String("via", p.name),
-					slog.String("addr", addrV4.String()),
-					slog.String("destination", destinationNetwork.String()))
-
-				routes = append(routes, tcpip.Route{
-					NIC:         1,
-					Destination: destinationNetwork,
-					Gateway:     addrV4,
-				})
-			} else if net.hasV6 && cidr.Addr().Is6() {
-				destinationNetwork, err := tcpip.NewSubnet(tcpip.AddrFrom16Slice(cidr.Addr().AsSlice()),
-					tcpip.MaskFromBytes(cidr.Masked().Addr().AsSlice()))
-				if err != nil {
-					return fmt.Errorf("could not parse ipv6 subnet: %v", err)
-				}
-
-				net.logger.Debug("Registering ipv6 route",
-					slog.String("via", p.name),
-					slog.String("addr", addrV6.String()),
-					slog.String("destination", destinationNetwork.String()))
-
-				routes = append(routes, tcpip.Route{
-					NIC:         1,
-					Destination: destinationNetwork,
-					Gateway:     addrV6,
-				})
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("could not register routes: %v", err)
-	}
-
-	net.stack.SetRouteTable(routes)
 
 	return nil
 }

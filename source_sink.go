@@ -44,6 +44,8 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/netstack/pkg/tcpip/header"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/channel"
+	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv4"
+	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv6"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/transport"
@@ -69,7 +71,8 @@ type sourceSink struct {
 	localAddrs   []netip.Addr
 }
 
-func newSourceSink(logger *slog.Logger, peers *peerList, s *stack.Stack, localAddrs []netip.Addr) (*sourceSink, error) {
+func newSourceSink(logger *slog.Logger, peers *peerList, s *stack.Stack,
+	localAddrs []netip.Addr, hasV4 bool, hasV6 bool) (*sourceSink, error) {
 	ss := &sourceSink{
 		logger:       logger,
 		debugLogging: logger.Enabled(context.Background(), slog.LevelDebug),
@@ -84,6 +87,43 @@ func newSourceSink(logger *slog.Logger, peers *peerList, s *stack.Stack, localAd
 
 	if err := ss.stack.CreateNIC(1, ss.ep); err != nil {
 		return nil, fmt.Errorf("could not create NIC: %v", err)
+	}
+
+	// Add default routes.
+	var routes []tcpip.Route
+	if hasV4 {
+		routes = append(routes, tcpip.Route{
+			NIC:         1,
+			Destination: header.IPv4EmptySubnet,
+		})
+	}
+	if hasV6 {
+		routes = append(routes, tcpip.Route{
+			NIC:         1,
+			Destination: header.IPv6EmptySubnet,
+		})
+	}
+	ss.stack.SetRouteTable(routes)
+
+	// Assign local addresses to the nic.
+	for _, addr := range localAddrs {
+		var protoNumber tcpip.NetworkProtocolNumber
+		if addr.Is4() {
+			protoNumber = ipv4.ProtocolNumber
+		} else if addr.Is6() {
+			protoNumber = ipv6.ProtocolNumber
+		}
+
+		protoAddr := tcpip.ProtocolAddress{
+			Protocol:          protoNumber,
+			AddressWithPrefix: tcpip.AddrFromSlice(addr.AsSlice()).WithPrefix(),
+		}
+
+		logger.Debug("Adding local address", slog.String("address", addr.String()))
+
+		if err := ss.stack.AddProtocolAddress(1, protoAddr, stack.AddressProperties{}); err != nil {
+			return nil, fmt.Errorf("could not add address: %v", err)
+		}
 	}
 
 	return ss, nil
