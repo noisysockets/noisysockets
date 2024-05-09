@@ -10,9 +10,8 @@
 package config_test
 
 import (
-	"io"
+	"bytes"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/noisysockets/noisysockets/config"
@@ -47,21 +46,11 @@ func TestToYAML(t *testing.T) {
 	conf, err := config.FromYAML(configFile)
 	require.NoError(t, err)
 
-	savedConfigPath := filepath.Join(t.TempDir(), "config.yaml")
-
-	savedConfigFile, err := os.OpenFile(savedConfigPath, os.O_CREATE|os.O_RDWR, 0o400)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, savedConfigFile.Close())
-	})
-
-	err = config.ToYAML(savedConfigFile, conf)
+	var buf bytes.Buffer
+	err = config.ToYAML(&buf, conf)
 	require.NoError(t, err)
 
-	_, err = savedConfigFile.Seek(0, io.SeekStart)
-	require.NoError(t, err)
-
-	conf2, err := config.FromYAML(savedConfigFile)
+	conf2, err := config.FromYAML(bytes.NewReader(buf.Bytes()))
 	require.NoError(t, err)
 
 	require.Equal(t, conf, conf2)

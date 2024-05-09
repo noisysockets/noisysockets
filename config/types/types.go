@@ -19,4 +19,5 @@ type TypeMeta struct {
 type Config interface {
 	GetKind() string
 	GetAPIVersion() string
+	PopulateTypeMeta()
 }

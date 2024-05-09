@@ -5,7 +5,6 @@ go 1.22.0
 require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/miekg/dns v1.1.59
-	github.com/mitchellh/mapstructure v1.5.0
 	github.com/neilotoole/slogt v1.1.0
 	github.com/noisysockets/netstack v0.6.0
 	github.com/stretchr/testify v1.9.0

@@ -15,7 +15,7 @@ import (
 	"github.com/noisysockets/noisysockets/config/types"
 )
 
-const ApiVersion = "noisysockets.github.com/v1alpha1"
+const APIVersion = "noisysockets.github.com/v1alpha1"
 
 // Config is the configuration for a NoisySockets network.
 // It is analogous to the configuration for a WireGuard interface.
@@ -60,12 +60,19 @@ type PeerConfig struct {
 	IPs []string `yaml:"ips,omitempty" mapstructure:"ips,omitempty"`
 }
 
-func (c Config) GetKind() string {
+func (c *Config) GetKind() string {
 	return "Config"
 }
 
-func (c Config) GetAPIVersion() string {
-	return ApiVersion
+func (c *Config) GetAPIVersion() string {
+	return APIVersion
+}
+
+func (c *Config) PopulateTypeMeta() {
+	c.TypeMeta = types.TypeMeta{
+		APIVersion: APIVersion,
+		Kind:       "Config",
+	}
 }
 
 func GetConfigByKind(kind string) (types.Config, error) {

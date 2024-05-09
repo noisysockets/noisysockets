@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/mitchellh/mapstructure"
 	"github.com/noisysockets/noisysockets/config/types"
 	latest "github.com/noisysockets/noisysockets/config/v1alpha1"
 	"gopkg.in/yaml.v3"
@@ -33,7 +32,7 @@ func FromYAML(r io.Reader) (conf *latest.Config, err error) {
 
 	var versionedConf types.Config
 	switch typeMeta.APIVersion {
-	case latest.ApiVersion:
+	case latest.APIVersion:
 		versionedConf, err = latest.GetConfigByKind(typeMeta.Kind)
 	default:
 		return nil, fmt.Errorf("unsupported api version: %s", typeMeta.APIVersion)
@@ -46,7 +45,7 @@ func FromYAML(r io.Reader) (conf *latest.Config, err error) {
 		return nil, fmt.Errorf("failed to unmarshal config from config file: %w", err)
 	}
 
-	if versionedConf.GetAPIVersion() != latest.ApiVersion {
+	if versionedConf.GetAPIVersion() != latest.APIVersion {
 		conf, err = migrate(versionedConf)
 		if err != nil {
 			return nil, fmt.Errorf("failed to migrate config: %w", err)
@@ -63,7 +62,7 @@ func FromYAML(r io.Reader) (conf *latest.Config, err error) {
 // ToYAML writes the given config object to the given writer.
 func ToYAML(w io.Writer, versionedConf types.Config) error {
 	var conf *latest.Config
-	if versionedConf.GetAPIVersion() != latest.ApiVersion {
+	if versionedConf.GetAPIVersion() != latest.APIVersion {
 		var err error
 		conf, err = migrate(versionedConf)
 		if err != nil {
@@ -73,19 +72,9 @@ func ToYAML(w io.Writer, versionedConf types.Config) error {
 		conf = versionedConf.(*latest.Config)
 	}
 
-	// Convert the conf into a map
-	m := make(map[string]interface{})
-	err := mapstructure.Decode(conf, &m)
-	if err != nil {
-		return fmt.Errorf("failed to decode config: %w", err)
-	}
+	conf.PopulateTypeMeta()
 
-	// Add the type information to the map.
-	m["apiVersion"] = conf.GetAPIVersion()
-	m["kind"] = conf.GetKind()
-
-	// Marshal the map to YAML.
-	if err := yaml.NewEncoder(w).Encode(m); err != nil {
+	if err := yaml.NewEncoder(w).Encode(conf); err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 

@@ -31,7 +31,7 @@ func FromINI(r io.Reader) (conf *latest.Config, err error) {
 
 	conf = &latest.Config{
 		TypeMeta: types.TypeMeta{
-			APIVersion: latest.ApiVersion,
+			APIVersion: latest.APIVersion,
 			Kind:       "Config",
 		},
 	}
@@ -131,7 +131,7 @@ func FromINI(r io.Reader) (conf *latest.Config, err error) {
 // INI format. This should only be used for exporting configuration.
 func ToINI(w io.Writer, versionedConf types.Config) error {
 	var conf *latest.Config
-	if versionedConf.GetAPIVersion() != latest.ApiVersion {
+	if versionedConf.GetAPIVersion() != latest.APIVersion {
 		var err error
 		conf, err = migrate(versionedConf)
 		if err != nil {
