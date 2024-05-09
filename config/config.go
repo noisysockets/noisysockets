@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/noisysockets/noisysockets/config/types"
 	latest "github.com/noisysockets/noisysockets/config/v1alpha1"
 	"gopkg.in/yaml.v3"
@@ -72,7 +73,19 @@ func ToYAML(w io.Writer, versionedConf types.Config) error {
 		conf = versionedConf.(*latest.Config)
 	}
 
-	if err := yaml.NewEncoder(w).Encode(conf); err != nil {
+	// Convert the conf into a map
+	m := make(map[string]interface{})
+	err := mapstructure.Decode(conf, &m)
+	if err != nil {
+		return fmt.Errorf("failed to decode config: %w", err)
+	}
+
+	// Add the type information to the map.
+	m["apiVersion"] = conf.GetAPIVersion()
+	m["kind"] = conf.GetKind()
+
+	// Marshal the map to YAML.
+	if err := yaml.NewEncoder(w).Encode(m); err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
