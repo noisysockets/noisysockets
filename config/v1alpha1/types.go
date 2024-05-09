@@ -60,12 +60,12 @@ type PeerConfig struct {
 	IPs []string `yaml:"ips,omitempty" mapstructure:"ips,omitempty"`
 }
 
-func (c *Config) GetKind() string {
-	return "Config"
-}
-
 func (c *Config) GetAPIVersion() string {
 	return APIVersion
+}
+
+func (c *Config) GetKind() string {
+	return "Config"
 }
 
 func (c *Config) PopulateTypeMeta() {
