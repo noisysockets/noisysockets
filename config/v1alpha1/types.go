@@ -42,7 +42,7 @@ type Config struct {
 type RouteConfig struct {
 	// Destinations is a CIDR block for which this route should be used.
 	Destination string `yaml:"destination" mapstructure:"destination"`
-	// Via is the name of the peer to use as the gateway for this route.
+	// Via is the name (or public key) of the peer to use as the gateway for this route.
 	Via string `yaml:"via" mapstructure:"via"`
 }
 

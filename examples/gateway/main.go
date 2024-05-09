@@ -55,6 +55,7 @@ func main() {
 		DNSServers: []string{"10.0.0.1"},
 		Routes: []v1alpha1.RouteConfig{
 			{
+				// Route all IPv4 traffic through the gateway.
 				Destination: "0.0.0.0/0",
 				Via:         "gateway",
 			},

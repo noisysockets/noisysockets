@@ -41,12 +41,6 @@ func FromINI(r io.Reader) (conf *latest.Config, err error) {
 		return nil, fmt.Errorf("missing Interface section")
 	}
 
-	if strings.Contains(ifaceSection.Comment, "Name") {
-		if fields := strings.Split(ifaceSection.Comment, "="); len(fields) == 2 {
-			conf.Name = strings.TrimSpace(fields[1])
-		}
-	}
-
 	key, err := ifaceSection.GetKey("Address")
 	if err != nil {
 		return nil, fmt.Errorf("missing address: %w", err)
@@ -74,26 +68,20 @@ func FromINI(r io.Reader) (conf *latest.Config, err error) {
 		}
 	}
 
-	for _, section := range iniConf.Sections() {
-		if section.Name() != "Peer" {
+	for _, peerSection := range iniConf.Sections() {
+		if peerSection.Name() != "Peer" {
 			continue
 		}
 
 		peerConf := latest.PeerConfig{}
 
-		if strings.Contains(section.Comment, "Name") {
-			if fields := strings.Split(section.Comment, "="); len(fields) == 2 {
-				peerConf.Name = strings.TrimSpace(fields[1])
-			}
-		}
-
-		key, err = section.GetKey("PublicKey")
+		key, err = peerSection.GetKey("PublicKey")
 		if err != nil {
 			return nil, fmt.Errorf("missing peer public key: %w", err)
 		}
 		peerConf.PublicKey = key.String()
 
-		key, err = section.GetKey("AllowedIPs")
+		key, err = peerSection.GetKey("AllowedIPs")
 		if err != nil {
 			return nil, fmt.Errorf("missing peer allowed IPs: %w", err)
 		}
@@ -117,13 +105,18 @@ func FromINI(r io.Reader) (conf *latest.Config, err error) {
 		}
 
 		for _, cidr := range destinationCIDRs {
+			peerName := peerConf.Name
+			if peerName == "" {
+				peerName = peerConf.PublicKey
+			}
+
 			conf.Routes = append(conf.Routes, latest.RouteConfig{
 				Destination: cidr.String(),
-				Via:         peerConf.Name,
+				Via:         peerName,
 			})
 		}
 
-		key, err = section.GetKey("Endpoint")
+		key, err = peerSection.GetKey("Endpoint")
 		if err == nil {
 			peerConf.Endpoint = key.String()
 		}
@@ -156,7 +149,9 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 	}
 
 	if conf.Name != "" {
-		ifaceSection.Comment = fmt.Sprintf("Name = %s", conf.Name)
+		if _, err := ifaceSection.NewKey("# Name", conf.Name); err != nil {
+			return fmt.Errorf("failed to create key: %w", err)
+		}
 	}
 
 	if _, err := ifaceSection.NewKey("Address", strings.Join(conf.IPs, ",")); err != nil {
@@ -195,7 +190,10 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 
 		var destinationCIDRs []netip.Prefix
 		if peerConf.Name != "" {
-			peerSection.Comment = fmt.Sprintf("Name = %s", peerConf.Name)
+			if _, err := peerSection.NewKey("# Name", peerConf.Name); err != nil {
+				return fmt.Errorf("failed to create key: %w", err)
+			}
+
 			destinationCIDRs = destinationCIDRsByPeer[peerConf.Name]
 		}
 

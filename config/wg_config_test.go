@@ -29,7 +29,7 @@ func TestFromINI(t *testing.T) {
 	err = config.ToYAML(&buf, conf)
 	require.NoError(t, err)
 
-	expected, err := os.ReadFile("testdata/config.yaml")
+	expected, err := os.ReadFile("testdata/from_ini_config.yaml")
 	require.NoError(t, err)
 
 	require.YAMLEq(t, string(expected), buf.String())
