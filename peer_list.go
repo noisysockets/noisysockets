@@ -17,112 +17,104 @@ import (
 )
 
 type peerList struct {
-	mu         sync.RWMutex
-	m          map[types.NoisePublicKey]*Peer
-	addrToPeer map[netip.Addr]*Peer
+	mu            sync.RWMutex
+	byPublicKey   map[types.NoisePublicKey]*Peer
+	byName        map[string]*Peer
+	byAddr        map[netip.Addr]*Peer
+	byDestination map[netip.Prefix]*Peer
 }
 
 func newPeerList() *peerList {
 	return &peerList{
-		m:          make(map[types.NoisePublicKey]*Peer),
-		addrToPeer: make(map[netip.Addr]*Peer),
+		byPublicKey:   make(map[types.NoisePublicKey]*Peer),
+		byName:        make(map[string]*Peer),
+		byAddr:        make(map[netip.Addr]*Peer),
+		byDestination: make(map[netip.Prefix]*Peer),
 	}
 }
 
-func (pl *peerList) add(peer *Peer) {
+func (pl *peerList) add(p *Peer) {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 
-	pl.m[peer.publicKey] = peer
+	pl.byPublicKey[p.PublicKey()] = p
 
-	// invalidate the cache
-	clear(pl.addrToPeer)
+	if p.Name() != "" {
+		pl.byName[p.Name()] = p
+	}
+
+	for _, addr := range p.Addresses() {
+		pl.byAddr[addr] = p
+	}
+
+	for _, prefix := range p.DestinationForPrefixes() {
+		pl.byDestination[prefix] = p
+	}
 }
 
-func (pl *peerList) remove(publicKey types.NoisePublicKey) {
+func (pl *peerList) remove(publicKey types.NoisePublicKey) (*Peer, bool) {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 
-	delete(pl.m, publicKey)
+	p, ok := pl.byPublicKey[publicKey]
+	if !ok {
+		return nil, false
+	}
 
-	// invalidate the cache
-	clear(pl.addrToPeer)
+	delete(pl.byPublicKey, publicKey)
+
+	if p.Name() != "" {
+		delete(pl.byName, p.Name())
+	}
+
+	for _, addr := range p.Addresses() {
+		delete(pl.byAddr, addr)
+	}
+
+	for _, prefix := range p.DestinationForPrefixes() {
+		delete(pl.byDestination, prefix)
+	}
+
+	return p, true
 }
 
 func (pl *peerList) get(publicKey types.NoisePublicKey) (*Peer, bool) {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 
-	p, ok := pl.m[publicKey]
+	p, ok := pl.byPublicKey[publicKey]
 	return p, ok
 }
 
-func (pl *peerList) lookupByAddress(addr netip.Addr) (*Peer, bool) {
+func (pl *peerList) getByName(name string) (*Peer, bool) {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 
-	// Cache the expensive address to peer lookup.
-	if len(pl.addrToPeer) == 0 {
-		for _, p := range pl.m {
-			p.Lock()
-			for _, addr := range p.addrs {
-				pl.addrToPeer[addr] = p
-			}
-			p.Unlock()
-		}
-	}
-
-	// Look for a peer that has the address.
-	if p, ok := pl.addrToPeer[addr]; ok {
-		return p, true
-	}
-
-	// Perhaps we have a gateway peer that matches.
-	var gatewayPeer *Peer
-
-	maxPrefixLength := -1
-	for _, p := range pl.m {
-		p.Lock()
-		for _, cidr := range p.gatewayForCIDRs {
-			if cidr.Contains(addr) {
-				prefixLength := cidr.Bits()
-				if prefixLength > maxPrefixLength {
-					gatewayPeer = p
-					maxPrefixLength = prefixLength
-				}
-			}
-		}
-		p.Unlock()
-	}
-
-	if gatewayPeer != nil {
-		return gatewayPeer, true
-	}
-
-	return nil, false
+	p, ok := pl.byName[name]
+	return p, ok
 }
 
-func (pl *peerList) lookupByName(name string) (*Peer, bool) {
+func (pl *peerList) getByAddress(addr netip.Addr) (*Peer, bool) {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 
-	for _, p := range pl.m {
-		p.Lock()
-		if p.name == name || p.publicKey.String() == name {
-			p.Unlock()
-			return p, true
-		}
-		p.Unlock()
-	}
+	p, ok := pl.byAddr[addr]
+	return p, ok
+}
 
-	return nil, false
+func (pl *peerList) getByDestination(prefix netip.Prefix) (*Peer, bool) {
+	pl.mu.RLock()
+	defer pl.mu.RUnlock()
+
+	p, ok := pl.byDestination[prefix]
+	return p, ok
 }
 
 func (pl *peerList) forEach(fn func(*Peer) error) error {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 
-	for _, p := range pl.m {
+	for _, p := range pl.byPublicKey {
 		if err := fn(p); err != nil {
 			return err
 		}

@@ -70,7 +70,7 @@ func TestNetwork(t *testing.T) {
 			},
 		}
 
-		net, err := noisysockets.NewNetwork(logger, &conf)
+		net, err := noisysockets.OpenNetwork(logger, &conf)
 		if err != nil {
 			logger.Error("Failed to create server network", "error", err)
 			return
@@ -121,7 +121,7 @@ func TestNetwork(t *testing.T) {
 			},
 		}
 
-		net, err := noisysockets.NewNetwork(logger, &conf)
+		net, err := noisysockets.OpenNetwork(logger, &conf)
 		if err != nil {
 			logger.Error("Failed to create server network", "error", err)
 			return
@@ -181,7 +181,7 @@ func TestNetwork(t *testing.T) {
 			}},
 	}
 
-	net, err := noisysockets.NewNetwork(logger, &conf)
+	net, err := noisysockets.OpenNetwork(logger, &conf)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, net.Close())
@@ -265,7 +265,7 @@ func TestAddAndRemovePeer(t *testing.T) {
 		}
 
 		var err error
-		server1Net, err = noisysockets.NewNetwork(logger, &conf)
+		server1Net, err = noisysockets.OpenNetwork(logger, &conf)
 		if err != nil {
 			logger.Error("Failed to create server network", "error", err)
 			return
@@ -319,7 +319,7 @@ func TestAddAndRemovePeer(t *testing.T) {
 		}
 
 		var err error
-		server2Net, err = noisysockets.NewNetwork(logger, &conf)
+		server2Net, err = noisysockets.OpenNetwork(logger, &conf)
 		if err != nil {
 			logger.Error("Failed to create server network", "error", err)
 			return
@@ -373,7 +373,7 @@ func TestAddAndRemovePeer(t *testing.T) {
 		},
 	}
 
-	net, err := noisysockets.NewNetwork(logger, &conf)
+	net, err := noisysockets.OpenNetwork(logger, &conf)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, net.Close())
@@ -507,7 +507,7 @@ func TestWireGuardCompatibility(t *testing.T) {
 	conf, err := config.FromYAML(configFile)
 	require.NoError(t, err)
 
-	net, err := noisysockets.NewNetwork(logger, conf)
+	net, err := noisysockets.OpenNetwork(logger, conf)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, net.Close())

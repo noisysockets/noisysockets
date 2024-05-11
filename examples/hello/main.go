@@ -51,7 +51,7 @@ func main() {
 		},
 	}
 
-	serverNet, err := noisysockets.NewNetwork(logger, serverConf)
+	serverNet, err := noisysockets.OpenNetwork(logger, serverConf)
 	if err != nil {
 		logger.Error("Failed to create network", slog.Any("error", err))
 		os.Exit(1)
@@ -59,7 +59,7 @@ func main() {
 	defer serverNet.Close()
 
 	// Create a network for "client" peer.
-	clientNet, err := noisysockets.NewNetwork(logger, &v1alpha1.Config{
+	clientNet, err := noisysockets.OpenNetwork(logger, &v1alpha1.Config{
 		Name:       "client1",
 		PrivateKey: clientPrivateKey.String(),
 		IPs:        []string{"10.0.0.2"},

@@ -63,7 +63,7 @@ var (
 type sourceSink struct {
 	logger       *slog.Logger
 	debugLogging bool
-	peers        *peerList
+	rt           *routingTable
 	stack        *stack.Stack
 	ep           *channel.Endpoint
 	notifyHandle *channel.NotificationHandle
@@ -71,12 +71,12 @@ type sourceSink struct {
 	localAddrs   []netip.Addr
 }
 
-func newSourceSink(logger *slog.Logger, peers *peerList, s *stack.Stack,
+func newSourceSink(logger *slog.Logger, rt *routingTable, s *stack.Stack,
 	localAddrs []netip.Addr, hasV4 bool, hasV6 bool) (*sourceSink, error) {
 	ss := &sourceSink{
 		logger:       logger,
 		debugLogging: logger.Enabled(context.Background(), slog.LevelDebug),
-		peers:        peers,
+		rt:           rt,
 		stack:        s,
 		ep:           channel.New(queueSize, uint32(transport.DefaultMTU), ""),
 		incoming:     make(chan *stack.PacketBuffer),
@@ -175,11 +175,11 @@ func (ss *sourceSink) Read(bufs [][]byte, sizes []int, destinations []types.Nois
 
 		logger := ss.logger.With(slog.String("address", peerAddr.String()))
 
-		dstPeer, ok := ss.peers.lookupByAddress(peerAddr)
+		dstPeer, ok := ss.rt.destination(peerAddr)
 		if !ok {
 			return fmt.Errorf("unknown destination address")
 		}
-		destinations[idx] = dstPeer.publicKey
+		destinations[idx] = dstPeer.PublicKey()
 
 		if ss.debugLogging {
 			logger.Debug("Sending packet to peer",
@@ -325,12 +325,12 @@ func (ss *sourceSink) validateSourceAddress(buf []byte, source types.NoisePublic
 		return protocolNumber, fmt.Errorf("unknown network protocol: %w", syscall.EAFNOSUPPORT)
 	}
 
-	srcPeer, ok := ss.peers.lookupByAddress(addr)
+	expectedSrcPeer, ok := ss.rt.destination(addr)
 	if !ok {
 		return protocolNumber, fmt.Errorf("unknown source address")
 	}
 
-	if !srcPeer.publicKey.Equals(source) {
+	if !expectedSrcPeer.PublicKey().Equals(source) {
 		return protocolNumber, fmt.Errorf("invalid source address for peer")
 	}
 

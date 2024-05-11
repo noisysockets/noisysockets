@@ -44,7 +44,7 @@ func TestNoisePrivateKeyEncoding(t *testing.T) {
 	encoded := sk1.String()
 
 	var sk2 NoisePrivateKey
-	require.NoError(t, sk2.FromString(encoded))
+	require.NoError(t, sk2.UnmarshalText([]byte(encoded)))
 
 	require.Equal(t, sk1, sk2)
 }
@@ -58,7 +58,7 @@ func TestNoisePublicKeyEncoding(t *testing.T) {
 	encoded := pk1.String()
 
 	var pk2 NoisePublicKey
-	require.NoError(t, pk2.FromString(encoded))
+	require.NoError(t, pk2.UnmarshalText([]byte(encoded)))
 
 	require.Equal(t, pk1, pk2)
 }

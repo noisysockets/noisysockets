@@ -86,17 +86,17 @@ func FromINI(r io.Reader) (conf *latest.Config, err error) {
 			return nil, fmt.Errorf("missing peer allowed IPs: %w", err)
 		}
 
-		var destinationCIDRs []netip.Prefix
+		var destinations []netip.Prefix
 		for _, ip := range strings.Split(key.String(), ",") {
 			ip = strings.TrimSpace(ip)
 
-			// is the ip a CIDR?
-			cidr, err := netip.ParsePrefix(ip)
+			// is the ip a prefix?
+			prefix, err := netip.ParsePrefix(ip)
 			if err == nil {
-				if cidr.IsSingleIP() {
-					peerConf.IPs = append(peerConf.IPs, cidr.Addr().String())
+				if prefix.IsSingleIP() {
+					peerConf.IPs = append(peerConf.IPs, prefix.Addr().String())
 				} else {
-					destinationCIDRs = append(destinationCIDRs, cidr)
+					destinations = append(destinations, prefix)
 				}
 				continue
 			}
@@ -104,14 +104,14 @@ func FromINI(r io.Reader) (conf *latest.Config, err error) {
 			peerConf.IPs = append(peerConf.IPs, ip)
 		}
 
-		for _, cidr := range destinationCIDRs {
+		for _, prefix := range destinations {
 			peerName := peerConf.Name
 			if peerName == "" {
 				peerName = peerConf.PublicKey
 			}
 
 			conf.Routes = append(conf.Routes, latest.RouteConfig{
-				Destination: cidr.String(),
+				Destination: prefix.String(),
 				Via:         peerName,
 			})
 		}
@@ -172,14 +172,14 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 		}
 	}
 
-	destinationCIDRsByPeer := make(map[string][]netip.Prefix)
+	destinationsByPeer := make(map[string][]netip.Prefix)
 	for _, route := range conf.Routes {
-		destinationCIDR, err := netip.ParsePrefix(route.Destination)
+		destination, err := netip.ParsePrefix(route.Destination)
 		if err != nil {
 			return fmt.Errorf("failed to parse route destination: %w", err)
 		}
 
-		destinationCIDRsByPeer[route.Via] = append(destinationCIDRsByPeer[route.Via], destinationCIDR)
+		destinationsByPeer[route.Via] = append(destinationsByPeer[route.Via], destination)
 	}
 
 	for _, peerConf := range conf.Peers {
@@ -188,28 +188,28 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 			return fmt.Errorf("failed to create section: %w", err)
 		}
 
-		var destinationCIDRs []netip.Prefix
+		var destinations []netip.Prefix
 		if peerConf.Name != "" {
 			if _, err := peerSection.NewKey("# Name", peerConf.Name); err != nil {
 				return fmt.Errorf("failed to create key: %w", err)
 			}
 
-			destinationCIDRs = destinationCIDRsByPeer[peerConf.Name]
+			destinations = destinationsByPeer[peerConf.Name]
 		}
 
 		var allowedIPs []string
-		for _, cidr := range destinationCIDRs {
-			allowedIPs = append(allowedIPs, cidr.String())
+		for _, prefix := range destinations {
+			allowedIPs = append(allowedIPs, prefix.String())
 		}
 
 		for _, ip := range peerConf.IPs {
-			for _, cidr := range destinationCIDRs {
+			for _, prefix := range destinations {
 				addr, err := netip.ParseAddr(ip)
 				if err != nil {
 					return fmt.Errorf("failed to parse IP address: %w", err)
 				}
 
-				if cidr.Contains(addr) {
+				if prefix.Contains(addr) {
 					continue
 				}
 			}

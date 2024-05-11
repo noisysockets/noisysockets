@@ -7,12 +7,14 @@ require (
 	github.com/miekg/dns v1.1.59
 	github.com/neilotoole/slogt v1.1.0
 	github.com/noisysockets/netstack v0.6.0
+	github.com/rdleal/intervalst v1.4.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/crypto v0.22.0
 	golang.org/x/net v0.24.0
 	golang.org/x/sys v0.19.0
 	gopkg.in/ini.v1 v1.67.0
 	gopkg.in/yaml.v3 v3.0.1
+	lukechampine.com/uint128 v1.3.0
 )
 
 require (

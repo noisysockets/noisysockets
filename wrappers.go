@@ -41,13 +41,13 @@ func (c *Conn) RemoteAddr() stdnet.Addr {
 		return nil
 	}
 
-	peer, ok := c.peers.lookupByAddress(netip.MustParseAddrPort(remoteAddr.String()).Addr())
+	peer, ok := c.peers.getByAddress(netip.MustParseAddrPort(remoteAddr.String()).Addr())
 	if !ok {
 		// Just return the standard address if we can't find the peer.
 		return remoteAddr
 	}
 
-	return &Addr{Addr: c.Conn.RemoteAddr(), pk: peer.publicKey}
+	return &Addr{Addr: c.Conn.RemoteAddr(), pk: peer.PublicKey()}
 }
 
 type listener struct {
@@ -80,13 +80,13 @@ func (pc *packetConn) ReadFrom(b []byte) (int, stdnet.Addr, error) {
 		return n, nil, err
 	}
 
-	peer, ok := pc.peers.lookupByAddress(netip.MustParseAddrPort(addr.String()).Addr())
+	peer, ok := pc.peers.getByAddress(netip.MustParseAddrPort(addr.String()).Addr())
 	if !ok {
 		// Just return the standard address if we can't find the peer.
 		return n, addr, err
 	}
 
-	return n, &Addr{Addr: addr, pk: peer.publicKey}, err
+	return n, &Addr{Addr: addr, pk: peer.PublicKey()}, err
 }
 
 func (pc *packetConn) WriteTo(b []byte, addr stdnet.Addr) (int, error) {

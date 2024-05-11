@@ -47,7 +47,7 @@ func main() {
 	defer stopGateway()
 
 	// Create a network for our "client" peer.
-	net, err := noisysockets.NewNetwork(logger, &v1alpha1.Config{
+	net, err := noisysockets.OpenNetwork(logger, &v1alpha1.Config{
 		PrivateKey: clientPrivateKey.String(),
 		IPs: []string{
 			"10.0.0.2",

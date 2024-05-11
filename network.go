@@ -74,6 +74,7 @@ var protoSplitter = regexp.MustCompile(`^(tcp|udp)(4|6)?$`)
 type NoisySocketsNetwork struct {
 	logger       *slog.Logger
 	peers        *peerList
+	rt           *routingTable
 	transport    *transport.Transport
 	stack        *stack.Stack
 	hostname     string
@@ -82,12 +83,12 @@ type NoisySocketsNetwork struct {
 	hasV4, hasV6 bool
 }
 
-// NewNetwork creates a new network using the provided configuration.
+// OpenNetwork creates a new network using the provided configuration.
 // The returned network is a userspace WireGuard peer that exposes
 // Dial() and Listen() methods compatible with the net package.
-func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, error) {
+func OpenNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, error) {
 	var privateKey types.NoisePrivateKey
-	if err := privateKey.FromString(conf.PrivateKey); err != nil {
+	if err := privateKey.UnmarshalText([]byte(conf.PrivateKey)); err != nil {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 
@@ -98,6 +99,7 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 	net := &NoisySocketsNetwork{
 		logger: logger,
 		peers:  newPeerList(),
+		rt:     newRoutingTable(logger),
 		stack: stack.New(stack.Options{
 			NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
 			TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol, icmp.NewProtocol4, icmp.NewProtocol6},
@@ -107,7 +109,7 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 
 	// Parse local addresses.
 	var err error
-	net.localAddrs, err = parseIPList(conf.IPs)
+	net.localAddrs, err = parseAddrList(conf.IPs)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse local addresses: %w", err)
 	}
@@ -124,19 +126,17 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 	// Add the local node to the list of peers.
 	net.hostname = conf.Name
 	if net.hostname != "" {
-		net.peers.add(&Peer{
-			name:      net.hostname,
-			publicKey: publicKey,
-			addrs:     net.localAddrs,
-		})
+		p := newPeer(nil, net.hostname, publicKey)
+		p.AddAddresses(net.localAddrs...)
+		net.peers.add(p)
 	}
 
-	net.dnsServers, err = parseIPPortList(conf.DNSServers)
+	net.dnsServers, err = parseAddrPortList(conf.DNSServers)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse DNS servers: %w", err)
 	}
 
-	sourceSink, err := newSourceSink(logger, net.peers, net.stack,
+	sourceSink, err := newSourceSink(logger, net.rt, net.stack,
 		net.localAddrs, net.hasV4, net.hasV6)
 	if err != nil {
 		return nil, fmt.Errorf("could not create source sink: %w", err)
@@ -159,12 +159,12 @@ func NewNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, er
 
 	// Add routes.
 	for _, routeConf := range conf.Routes {
-		destinationCIDR, err := netip.ParsePrefix(routeConf.Destination)
+		destination, err := netip.ParsePrefix(routeConf.Destination)
 		if err != nil {
 			return nil, fmt.Errorf("could not parse route destination: %w", err)
 		}
 
-		if err := net.AddRoute(destinationCIDR, routeConf.Via); err != nil {
+		if err := net.AddRoute(destination, routeConf.Via); err != nil {
 			return nil, fmt.Errorf("could not add route: %w", err)
 		}
 	}
@@ -217,11 +217,8 @@ func (net *NoisySocketsNetwork) LookupHost(host string) ([]string, error) {
 	}
 
 	// Host is the name of a peer.
-	if p, ok := net.peers.lookupByName(host); ok {
-		p.Lock()
-		defer p.Unlock()
-
-		addrs = p.addrs
+	if p, ok := net.peers.getByName(host); ok {
+		addrs = p.Addresses()
 
 		logger.Debug("Host is the name of a peer")
 
@@ -484,7 +481,7 @@ func (net *NoisySocketsNetwork) ListenPacket(network, address string) (stdnet.Pa
 // AddPeer adds a wireguard peer to the network.
 func (net *NoisySocketsNetwork) AddPeer(peerConf v1alpha1.PeerConfig) error {
 	var publicKey types.NoisePublicKey
-	if err := publicKey.FromString(peerConf.PublicKey); err != nil {
+	if err := publicKey.UnmarshalText([]byte(peerConf.PublicKey)); err != nil {
 		return fmt.Errorf("failed to parse peer public key: %w", err)
 	}
 
@@ -501,17 +498,20 @@ func (net *NoisySocketsNetwork) AddPeer(peerConf v1alpha1.PeerConfig) error {
 		addrs = append(addrs, addr)
 	}
 
-	p := &Peer{
-		name:      peerConf.Name,
-		publicKey: publicKey,
-		addrs:     addrs,
+	transportPeer, err := net.transport.NewPeer(publicKey)
+	if err != nil {
+		return fmt.Errorf("failed to create transport peer: %w", err)
 	}
+
+	p := newPeer(transportPeer, peerConf.Name, publicKey)
+	p.AddAddresses(addrs...)
+
+	// Add the peer to the list of peers.
 	net.peers.add(p)
 
-	var err error
-	p.Peer, err = net.transport.NewPeer(publicKey)
-	if err != nil {
-		return fmt.Errorf("failed to create peer: %w", err)
+	// Add the peer to the routing table.
+	if err := net.rt.update(p); err != nil {
+		return fmt.Errorf("could not add peer to routing table: %w", err)
 	}
 
 	// Regularly send keepalives to the peer to keep NAT mappings valid.
@@ -551,9 +551,19 @@ func (net *NoisySocketsNetwork) AddPeer(peerConf v1alpha1.PeerConfig) error {
 func (net *NoisySocketsNetwork) RemovePeer(publicKey types.NoisePublicKey) error {
 	net.logger.Debug("Removing peer", slog.String("peer", publicKey.DisplayString()))
 
-	net.peers.remove(publicKey)
-
+	// Remove the peer from the transport.
 	net.transport.RemovePeer(publicKey)
+
+	// Remove the peer from the peer list.
+	p, ok := net.peers.remove(publicKey)
+	if !ok {
+		return ErrUnknownPeer
+	}
+
+	// Remove the peer from the routing table.
+	if err := net.rt.remove(p); err != nil {
+		return fmt.Errorf("could not remove peer from routing table: %w", err)
+	}
 
 	return nil
 }
@@ -567,7 +577,7 @@ func (net *NoisySocketsNetwork) GetPeer(publicKey types.NoisePublicKey) (*Peer, 
 func (net *NoisySocketsNetwork) ListPeers() []types.NoisePublicKey {
 	var publicKeys []types.NoisePublicKey
 	_ = net.peers.forEach(func(p *Peer) error {
-		publicKeys = append(publicKeys, p.publicKey)
+		publicKeys = append(publicKeys, p.PublicKey())
 		return nil
 	})
 
@@ -575,40 +585,39 @@ func (net *NoisySocketsNetwork) ListPeers() []types.NoisePublicKey {
 }
 
 // AddRoute adds a routing table entry for the network.
-func (net *NoisySocketsNetwork) AddRoute(destinationCIDR netip.Prefix, viaPeerName string) error {
+func (net *NoisySocketsNetwork) AddRoute(destination netip.Prefix, viaPeerName string) error {
 	net.logger.Debug("Adding route",
-		slog.String("destination", destinationCIDR.String()),
+		slog.String("destination", destination.String()),
 		slog.String("via", viaPeerName))
 
-	p, ok := net.peers.lookupByName(viaPeerName)
+	p, ok := net.peers.getByName(viaPeerName)
 	if !ok {
 		return ErrUnknownPeer
 	}
 
-	p.Lock()
-	p.gatewayForCIDRs = dedupNetworks(append(p.gatewayForCIDRs, destinationCIDR))
-	p.Unlock()
+	p.AddDestinationPrefixes(destination)
+
+	if err := net.rt.update(p); err != nil {
+		return fmt.Errorf("could not sync routing table: %w", err)
+	}
 
 	return nil
 }
 
 // RemoveRoute removes a routing table entry for the network.
-func (net *NoisySocketsNetwork) RemoveRoute(destinationCIDR netip.Prefix) error {
-	net.logger.Debug("Removing route", slog.String("destination", destinationCIDR.String()))
+func (net *NoisySocketsNetwork) RemoveRoute(destination netip.Prefix) error {
+	net.logger.Debug("Removing route", slog.String("destination", destination.String()))
 
-	p, ok := net.peers.lookupByAddress(destinationCIDR.Addr())
+	p, ok := net.peers.getByDestination(destination)
 	if !ok {
-		return fmt.Errorf("could not find peer for destination address: %v", destinationCIDR)
+		return fmt.Errorf("could not find peer for destination prefix: %v", destination)
 	}
 
-	p.Lock()
-	for i, cidr := range p.gatewayForCIDRs {
-		if cidr.String() == destinationCIDR.String() {
-			p.gatewayForCIDRs = append(p.gatewayForCIDRs[:i], p.gatewayForCIDRs[i+1:]...)
-			break
-		}
+	p.RemoveDestinationPrefixes(destination)
+
+	if err := net.rt.update(p); err != nil {
+		return fmt.Errorf("could not sync routing table: %w", err)
 	}
-	p.Unlock()
 
 	return nil
 }

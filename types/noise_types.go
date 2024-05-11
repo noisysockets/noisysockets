@@ -58,8 +58,8 @@ func NewPrivateKey() (sk NoisePrivateKey, err error) {
 	return
 }
 
-func (sk *NoisePrivateKey) FromString(src string) error {
-	b, err := base64.StdEncoding.DecodeString(src)
+func (sk *NoisePrivateKey) UnmarshalText(text []byte) error {
+	b, err := base64.StdEncoding.DecodeString(string(text))
 	if err != nil {
 		return err
 	}
@@ -87,11 +87,12 @@ func (sk NoisePrivateKey) String() string {
 	return base64.StdEncoding.EncodeToString(sk[:])
 }
 
-func (pk *NoisePublicKey) FromString(src string) error {
-	b, err := base64.StdEncoding.DecodeString(src)
+func (pk *NoisePublicKey) UnmarshalText(text []byte) error {
+	b, err := base64.StdEncoding.DecodeString(string(text))
 	if err != nil {
 		return err
 	}
+
 	copy(pk[:], b)
 	return nil
 }

@@ -15,7 +15,7 @@ import (
 	"net/netip"
 )
 
-func parseIPList(ips []string) ([]netip.Addr, error) {
+func parseAddrList(ips []string) ([]netip.Addr, error) {
 	var addrs []netip.Addr
 	for _, ip := range ips {
 		addr, err := netip.ParseAddr(ip)
@@ -29,7 +29,7 @@ func parseIPList(ips []string) ([]netip.Addr, error) {
 	return addrs, nil
 }
 
-func parseIPPortList(ipPorts []string) ([]netip.AddrPort, error) {
+func parseAddrPortList(ipPorts []string) ([]netip.AddrPort, error) {
 	var addrPorts []netip.AddrPort
 	for _, ipPort := range ipPorts {
 		var addrPort netip.AddrPort
@@ -53,20 +53,4 @@ func parseIPPortList(ipPorts []string) ([]netip.AddrPort, error) {
 	}
 
 	return addrPorts, nil
-}
-
-func dedupNetworks(networks []netip.Prefix) []netip.Prefix {
-	seen := make(map[string]bool)
-	var deduped []netip.Prefix
-	for _, net := range networks {
-		key := net.String()
-		if _, ok := seen[key]; ok {
-			continue
-		}
-
-		seen[key] = true
-		deduped = append(deduped, net)
-	}
-
-	return deduped
 }

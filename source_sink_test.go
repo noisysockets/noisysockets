@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"testing"
 
+	"github.com/neilotoole/slogt"
 	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/netstack/pkg/tcpip/header"
 	"github.com/noisysockets/noisysockets/types"
@@ -35,7 +36,7 @@ func TestValidateSourceAddress(t *testing.T) {
 
 	peer2PK := peer2SK.Public()
 
-	peers := newPeerList()
+	rt := newRoutingTable(slogt.New(t))
 
 	ipv4Net, err := netip.ParsePrefix("192.168.2.0/24")
 	require.NoError(t, err)
@@ -43,37 +44,21 @@ func TestValidateSourceAddress(t *testing.T) {
 	ipv6Net, err := netip.ParsePrefix("2001:db9::/64")
 	require.NoError(t, err)
 
-	peers.add(&Peer{
-		name:      "gw",
-		publicKey: gwPK,
-		addrs: []netip.Addr{
-			netip.MustParseAddr("192.168.1.1"),
-			netip.MustParseAddr("2001:db8::1"),
-		},
-		gatewayForCIDRs: []netip.Prefix{ipv4Net, ipv6Net},
-	})
+	p := newPeer(nil, "default-gateway", gwPK)
+	p.AddAddresses(netip.MustParseAddr("192.168.1.1"), netip.MustParseAddr("2001:db8::1"))
+	p.AddDestinationPrefixes(ipv4Net, ipv6Net)
+	require.NoError(t, rt.update(p))
 
-	peers.add(&Peer{
-		name:      "peer1",
-		publicKey: peer1PK,
-		addrs: []netip.Addr{
-			netip.MustParseAddr("192.168.1.2"),
-			netip.MustParseAddr("2001:db8::2"),
-		},
-	})
-	require.NoError(t, err)
+	p = newPeer(nil, "peer1", peer1PK)
+	p.AddAddresses(netip.MustParseAddr("192.168.1.2"), netip.MustParseAddr("2001:db8::2"))
+	require.NoError(t, rt.update(p))
 
-	peers.add(&Peer{
-		name:      "peer2",
-		publicKey: peer2PK,
-		addrs: []netip.Addr{
-			netip.MustParseAddr("192.168.1.3"),
-			netip.MustParseAddr("2001:db8::3"),
-		},
-	})
+	p = newPeer(nil, "peer2", peer2PK)
+	p.AddAddresses(netip.MustParseAddr("192.168.1.3"), netip.MustParseAddr("2001:db8::3"))
+	require.NoError(t, rt.update(p))
 
 	ss := sourceSink{
-		peers: peers,
+		rt: rt,
 	}
 
 	t.Run("Valid (IPv4)", func(t *testing.T) {
