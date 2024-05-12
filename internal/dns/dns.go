@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/miekg/dns"
 	"github.com/noisysockets/noisysockets/internal/dns/addrselect"
+	"github.com/noisysockets/noisysockets/internal/util"
 	"github.com/noisysockets/noisysockets/network"
 )
 
@@ -37,14 +38,19 @@ func LookupHost(net network.Network, dnsServers []netip.AddrPort, host string) (
 		queryTypes = append(queryTypes, dns.TypeAAAA)
 	}
 
-	var addrs []netip.Addr
-	var queryResult *multierror.Error
+	// Shuffle the DNS servers for load balancing.
+	shuffledDNSServers := make([]netip.AddrPort, len(dnsServers))
+	copy(shuffledDNSServers, dnsServers)
+	shuffledDNSServers = util.Shuffle(shuffledDNSServers)
 
-	for _, dnsServer := range dnsServers {
+	var addrs []netip.Addr
+	var queryErr *multierror.Error
+
+	for _, dnsServer := range shuffledDNSServers {
 		for _, queryType := range queryTypes {
 			in, err := queryDNSServer(net, host, client, dnsServer, queryType)
 			if err != nil {
-				queryResult = multierror.Append(queryResult, err)
+				queryErr = multierror.Append(queryErr, err)
 				continue
 			}
 
@@ -64,8 +70,8 @@ func LookupHost(net network.Network, dnsServers []netip.AddrPort, host string) (
 		}
 	}
 
-	if queryResult != nil {
-		return nil, &stdnet.DNSError{Err: queryResult.Error(), Name: host}
+	if queryErr != nil {
+		return nil, &stdnet.DNSError{Err: queryErr.Error(), Name: host}
 	}
 
 	return nil, &stdnet.DNSError{Err: "no such host", Name: host}
