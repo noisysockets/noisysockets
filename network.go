@@ -79,8 +79,8 @@ type NoisySocketsNetwork struct {
 	stack        *stack.Stack
 	hostname     string
 	localAddrs   []netip.Addr
-	dnsServers   []netip.AddrPort
 	hasV4, hasV6 bool
+	resolver     *dns.Resolver
 }
 
 // OpenNetwork creates a new network using the provided configuration.
@@ -131,9 +131,18 @@ func OpenNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, e
 		net.peers.add(p)
 	}
 
-	net.dnsServers, err = parseAddrPortList(conf.DNSServers)
-	if err != nil {
-		return nil, fmt.Errorf("could not parse DNS servers: %w", err)
+	if conf.DNS != nil {
+		nameservers, err := parseAddrPortList(conf.DNS.Nameservers)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse nameserver addresses: %w", err)
+		}
+
+		searchDomains := []string{"."}
+		if conf.DNS.Search != nil {
+			searchDomains = append(searchDomains, conf.DNS.Search...)
+		}
+
+		net.resolver = dns.NewResolver(net, nameservers, searchDomains)
 	}
 
 	sourceSink, err := newSourceSink(logger, net.rt, net.stack,
@@ -216,6 +225,11 @@ func (net *NoisySocketsNetwork) LookupHost(host string) ([]string, error) {
 		goto LOOKUP_HOST_DONE
 	}
 
+	// Trim any search domains from host.
+	if net.resolver != nil {
+		host = net.resolver.TrimSearchDomain(host)
+	}
+
 	// Host is the name of a peer.
 	if p, ok := net.peers.getByName(host); ok {
 		addrs = p.Addresses()
@@ -226,9 +240,9 @@ func (net *NoisySocketsNetwork) LookupHost(host string) ([]string, error) {
 	}
 
 	// Host is a DNS name.
-	if len(net.dnsServers) > 0 {
+	if net.resolver != nil {
 		var err error
-		addrs, err = dns.LookupHost(net, net.dnsServers, host)
+		addrs, err = net.resolver.LookupHost(host)
 		if err != nil {
 			return nil, err
 		}

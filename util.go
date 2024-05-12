@@ -15,9 +15,9 @@ import (
 	"net/netip"
 )
 
-func parseAddrList(ips []string) ([]netip.Addr, error) {
+func parseAddrList(addrList []string) ([]netip.Addr, error) {
 	var addrs []netip.Addr
-	for _, ip := range ips {
+	for _, ip := range addrList {
 		addr, err := netip.ParseAddr(ip)
 		if err != nil {
 			return nil, fmt.Errorf("could not parse address: %w", err)
@@ -29,9 +29,9 @@ func parseAddrList(ips []string) ([]netip.Addr, error) {
 	return addrs, nil
 }
 
-func parseAddrPortList(ipPorts []string) ([]netip.AddrPort, error) {
+func parseAddrPortList(addrPortList []string) ([]netip.AddrPort, error) {
 	var addrPorts []netip.AddrPort
-	for _, ipPort := range ipPorts {
+	for _, ipPort := range addrPortList {
 		var addrPort netip.AddrPort
 
 		// Do we have a port specified?

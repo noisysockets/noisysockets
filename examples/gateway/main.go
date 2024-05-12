@@ -52,7 +52,9 @@ func main() {
 		IPs: []string{
 			"10.0.0.2",
 		},
-		DNSServers: []string{"10.0.0.1"},
+		DNS: &v1alpha1.DNSConfig{
+			Nameservers: []string{"10.0.0.1"},
+		},
 		Routes: []v1alpha1.RouteConfig{
 			{
 				// Route all IPv4 traffic through the gateway.

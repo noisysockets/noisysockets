@@ -18,37 +18,66 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/miekg/dns"
+	"github.com/miekg/dns/dnsutil"
 	"github.com/noisysockets/noisysockets/internal/dns/addrselect"
 	"github.com/noisysockets/noisysockets/internal/util"
 	"github.com/noisysockets/noisysockets/network"
 )
 
-// LookupHost performs a DNS lookup for the given host using the provided DNS servers.
-func LookupHost(net network.Network, dnsServers []netip.AddrPort, host string) ([]netip.Addr, error) {
+// Resolver is a DNS resolver.
+type Resolver struct {
+	net           network.Network
+	nameservers   []netip.AddrPort
+	searchDomains []string
+}
+
+// NewResolver creates a new DNS resolver.
+func NewResolver(net network.Network, nameservers []netip.AddrPort, searchDomains []string) *Resolver {
+	// Use the default DNS port if none is specified.
+	for i, ns := range nameservers {
+		if ns.Port() == 0 {
+			nameservers[i] = netip.AddrPortFrom(ns.Addr(), 53)
+		}
+	}
+
+	// Ensure that search domains are fully qualified domain names.
+	for i, searchDomain := range searchDomains {
+		searchDomains[i] = dns.Fqdn(searchDomain)
+	}
+
+	return &Resolver{
+		net:           net,
+		nameservers:   nameservers,
+		searchDomains: searchDomains,
+	}
+}
+
+// LookupHost looks up the IP addresses for a given host.
+func (r *Resolver) LookupHost(host string) ([]netip.Addr, error) {
 	client := &dns.Client{
 		Net:     "udp",
 		Timeout: 10 * time.Second,
 	}
 
 	var queryTypes []uint16
-	if net.HasIPv4() {
+	if r.net.HasIPv4() {
 		queryTypes = append(queryTypes, dns.TypeA)
 	}
-	if net.HasIPv6() {
+	if r.net.HasIPv6() {
 		queryTypes = append(queryTypes, dns.TypeAAAA)
 	}
 
-	// Shuffle the DNS servers for load balancing.
-	shuffledDNSServers := make([]netip.AddrPort, len(dnsServers))
-	copy(shuffledDNSServers, dnsServers)
-	shuffledDNSServers = util.Shuffle(shuffledDNSServers)
+	// Shuffle the nameserver list for load balancing.
+	shuffledNameservers := make([]netip.AddrPort, len(r.nameservers))
+	copy(shuffledNameservers, r.nameservers)
+	shuffledNameservers = util.Shuffle(shuffledNameservers)
 
 	var addrs []netip.Addr
 	var queryErr *multierror.Error
 
-	for _, dnsServer := range shuffledDNSServers {
+	for _, ns := range shuffledNameservers {
 		for _, queryType := range queryTypes {
-			in, err := queryDNSServer(net, host, client, dnsServer, queryType)
+			in, err := r.queryNameserver(client, ns, queryType, host)
 			if err != nil {
 				queryErr = multierror.Append(queryErr, err)
 				continue
@@ -65,7 +94,7 @@ func LookupHost(net network.Network, dnsServers []netip.AddrPort, host string) (
 		}
 
 		if len(addrs) > 0 {
-			addrselect.SortByRFC6724(net, addrs)
+			addrselect.SortByRFC6724(r.net, addrs)
 			return addrs, nil
 		}
 	}
@@ -77,34 +106,43 @@ func LookupHost(net network.Network, dnsServers []netip.AddrPort, host string) (
 	return nil, &stdnet.DNSError{Err: "no such host", Name: host}
 }
 
-func queryDNSServer(net network.Network, host string, client *dns.Client, dnsServer netip.AddrPort, queryType uint16) (*dns.Msg, error) {
-	if dnsServer.Port() == 0 {
-		// Use the default DNS port if none is specified.
-		dnsServer = netip.AddrPortFrom(dnsServer.Addr(), 53)
+// TrimSearchDomain trims the search domain from a host name.
+func (r *Resolver) TrimSearchDomain(host string) string {
+	host = dns.Fqdn(host)
+
+	for _, searchDomain := range r.searchDomains {
+		trimmedHost := dnsutil.TrimDomainName(host, searchDomain)
+		if trimmedHost != host {
+			return trimmedHost
+		}
 	}
 
+	return host
+}
+
+func (r *Resolver) queryNameserver(client *dns.Client, nameserver netip.AddrPort, queryType uint16, host string) (*dns.Msg, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
 	defer cancel()
 
-	conn, err := net.DialContext(ctx, client.Net, dnsServer.String())
+	conn, err := r.net.DialContext(ctx, client.Net, nameserver.String())
 	if err != nil {
 		return nil, &stdnet.DNSError{
-			Err:  fmt.Errorf("could not connect to DNS server %s: %w", dnsServer, err).Error(),
+			Err:  fmt.Errorf("could not connect to DNS server %s: %w", nameserver, err).Error(),
 			Name: host,
 		}
 	}
 	defer conn.Close()
 
-	msg := new(dns.Msg)
-	msg.SetQuestion(dns.Fqdn(host), queryType)
+	req := new(dns.Msg)
+	req.SetQuestion(dns.Fqdn(host), queryType)
 
-	r, _, err := client.ExchangeWithConn(msg, &dns.Conn{Conn: conn})
+	reply, _, err := client.ExchangeWithConn(req, &dns.Conn{Conn: conn})
 	if err != nil {
 		return nil, &stdnet.DNSError{
-			Err:  fmt.Errorf("could not query DNS server %s: %w", dnsServer.String(), err).Error(),
+			Err:  fmt.Errorf("could not query DNS server %s: %w", nameserver.String(), err).Error(),
 			Name: host,
 		}
 	}
 
-	return r, nil
+	return reply, nil
 }

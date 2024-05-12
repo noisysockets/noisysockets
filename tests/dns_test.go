@@ -53,13 +53,16 @@ func TestLookupHost(t *testing.T) {
 	dnsMappedPort, err := dnsC.MappedPort(ctx, "53/udp")
 	require.NoError(t, err)
 
-	dnsServer := netip.AddrPortFrom(netip.MustParseAddr(dnsAddrs[0]), uint16(dnsMappedPort.Int()))
+	nameserver := netip.AddrPortFrom(netip.MustParseAddr(dnsAddrs[0]), uint16(dnsMappedPort.Int()))
 
 	// Bind can be a bit funny.
 	time.Sleep(time.Second)
 
+	// Create a new DNS resolver.
+	resolver := dns.NewResolver(network.Host(), []netip.AddrPort{nameserver}, nil)
+
 	// Perform a DNS query.
-	addrs, err := dns.LookupHost(network.Host(), []netip.AddrPort{dnsServer}, "www.noisysockets.github.com")
+	addrs, err := resolver.LookupHost("www.noisysockets.github.com")
 	require.NoError(t, err)
 
 	require.Len(t, addrs, 2)

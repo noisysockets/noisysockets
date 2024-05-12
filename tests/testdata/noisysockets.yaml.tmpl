@@ -3,8 +3,9 @@ kind: Config
 privateKey: SFN1gntnAutVFefwrPDlM1W2/LGWaRSn2hq06TvL2GY=
 ips:
 - 10.7.0.2
-dnsServers:
-- 10.7.0.1
+dns:
+  nameservers:
+  - 10.7.0.1
 routes:
 - destination: 0.0.0.0/0
   via: gateway

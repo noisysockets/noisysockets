@@ -30,12 +30,20 @@ type Config struct {
 	PrivateKey string `yaml:"privateKey" mapstructure:"privateKey"`
 	// IPs is a list of IP addresses assigned to this peer.
 	IPs []string `yaml:"ips,omitempty" mapstructure:"ips,omitempty"`
-	// DNSServers is an optional list of DNS servers to use for host resolution.
-	DNSServers []string `yaml:"dnsServers,omitempty" mapstructure:"dnsServers,omitempty"`
+	// DNS is the DNS configuration for this peer.
+	DNS *DNSConfig `yaml:"dns,omitempty" mapstructure:"dns,omitempty"`
 	// Routes is the routing table to use for the network.
 	Routes []RouteConfig `yaml:"routes,omitempty" mapstructure:"routes,omitempty"`
 	// Peers is a list of known peers to which we can send and receive packets.
 	Peers []PeerConfig `yaml:"peers,omitempty" mapstructure:"peers,omitempty"`
+}
+
+// DNSConfig is the configuration for DNS resolution.
+type DNSConfig struct {
+	// Nameservers is a list of DNS servers to use for DNS resolution.
+	Nameservers []string `yaml:"nameservers" mapstructure:"nameservers"`
+	// Search is a list of search domains to use for DNS resolution.
+	Search []string `yaml:"search,omitempty" mapstructure:"search,omitempty"`
 }
 
 // RouteConfig is the configuration for a route in the routing table.
