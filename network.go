@@ -36,6 +36,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"strconv"
+	"strings"
 
 	"context"
 	"regexp"
@@ -137,7 +138,7 @@ func OpenNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, e
 			return nil, fmt.Errorf("could not parse nameserver addresses: %w", err)
 		}
 
-		searchDomains := []string{"."}
+		var searchDomains []string
 		if conf.DNS.Search != nil {
 			searchDomains = append(searchDomains, conf.DNS.Search...)
 		}
@@ -228,10 +229,12 @@ func (net *NoisySocketsNetwork) LookupHost(host string) ([]string, error) {
 	// Trim any search domains from host.
 	if net.resolver != nil {
 		host = net.resolver.TrimSearchDomain(host)
+
+		logger.Debug("Trimmed search domains", slog.String("host", host))
 	}
 
 	// Host is the name of a peer.
-	if p, ok := net.peers.getByName(host); ok {
+	if p, ok := net.peers.getByName(strings.TrimSuffix(host, ".")); ok {
 		addrs = p.Addresses()
 
 		logger.Debug("Host is the name of a peer")
