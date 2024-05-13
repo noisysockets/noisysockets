@@ -44,6 +44,7 @@ import (
 
 	stdnet "net"
 
+	miekgdns "github.com/miekg/dns"
 	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/netstack/pkg/tcpip/adapters/gonet"
 	"github.com/noisysockets/netstack/pkg/tcpip/network/ipv4"
@@ -81,6 +82,7 @@ type NoisySocketsNetwork struct {
 	stack        *stack.Stack
 	hostname     string
 	localAddrs   []netip.Addr
+	domain       string
 	hasV4, hasV6 bool
 	resolver     *dns.Resolver
 }
@@ -107,6 +109,10 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (network.Networ
 			TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol, icmp.NewProtocol4, icmp.NewProtocol6},
 			HandleLocal:        true,
 		}),
+	}
+
+	if conf.DNS != nil && conf.DNS.Domain != "" {
+		net.domain = miekgdns.Fqdn(conf.DNS.Domain)
 	}
 
 	// Parse local addresses.
@@ -220,6 +226,11 @@ func (net *NoisySocketsNetwork) LookupHost(host string) ([]string, error) {
 		logger.Debug("Host is an IP address")
 
 		goto LOOKUP_HOST_DONE
+	}
+
+	// Trim the domain suffix from the host (if present).
+	if strings.Count(host, ".") > 1 && net.domain != "" {
+		host = strings.TrimSuffix(miekgdns.Fqdn(host), net.domain)
 	}
 
 	// Host is the name of a peer.
