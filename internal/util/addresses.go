@@ -7,7 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-package noisysockets
+package util
 
 import (
 	"fmt"
@@ -15,7 +15,8 @@ import (
 	"net/netip"
 )
 
-func parseAddrList(addrList []string) ([]netip.Addr, error) {
+// ParseAddrList parses a list of IP address strings and returns a list of netip.Addr.
+func ParseAddrList(addrList []string) ([]netip.Addr, error) {
 	var addrs []netip.Addr
 	for _, ip := range addrList {
 		addr, err := netip.ParseAddr(ip)
@@ -29,7 +30,8 @@ func parseAddrList(addrList []string) ([]netip.Addr, error) {
 	return addrs, nil
 }
 
-func parseAddrPortList(addrPortList []string) ([]netip.AddrPort, error) {
+// ParseAddrPortList parses a list of IP address and port strings and returns a list of netip.AddrPort.
+func ParseAddrPortList(addrPortList []string) ([]netip.AddrPort, error) {
 	var addrPorts []netip.AddrPort
 	for _, ipPort := range addrPortList {
 		var addrPort netip.AddrPort

@@ -14,7 +14,7 @@ import (
 	stdnet "net"
 
 	"github.com/noisysockets/noisysockets"
-	"github.com/noisysockets/noisysockets/config/v1alpha1"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
 	"github.com/noisysockets/noisysockets/network"
 	"github.com/noisysockets/noisysockets/types"
 )
@@ -37,12 +37,12 @@ func main() {
 	}
 
 	// Create a network for "server" peer.
-	serverConf := &v1alpha1.Config{
+	serverConf := &latestconfig.Config{
 		Name:       "server",
 		PrivateKey: serverPrivateKey.String(),
 		IPs:        []string{"10.0.0.1"},
 		ListenPort: 51820,
-		Peers: []v1alpha1.PeerConfig{
+		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "client1",
 				PublicKey: clientPrivateKey.Public().String(),
@@ -59,11 +59,11 @@ func main() {
 	defer serverNet.Close()
 
 	// Create a network for "client" peer.
-	clientNet, err := noisysockets.OpenNetwork(logger, &v1alpha1.Config{
+	clientNet, err := noisysockets.OpenNetwork(logger, &latestconfig.Config{
 		Name:       "client1",
 		PrivateKey: clientPrivateKey.String(),
 		IPs:        []string{"10.0.0.2"},
-		Peers: []v1alpha1.PeerConfig{
+		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "server",
 				PublicKey: serverPrivateKey.Public().String(),

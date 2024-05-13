@@ -19,7 +19,7 @@ import (
 )
 
 func TestFromYAML(t *testing.T) {
-	configFile, err := os.Open("testdata/config.yaml")
+	configFile, err := os.Open("testdata/config_v1alpha2.yaml")
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, configFile.Close())
@@ -29,7 +29,7 @@ func TestFromYAML(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "Config", conf.GetKind())
-	require.Equal(t, "noisysockets.github.com/v1alpha1", conf.GetAPIVersion())
+	require.Equal(t, "noisysockets.github.com/v1alpha2", conf.GetAPIVersion())
 
 	// Just check a few fields to make sure the config was parsed correctly.
 	require.Equal(t, uint16(12345), conf.ListenPort)
@@ -37,7 +37,7 @@ func TestFromYAML(t *testing.T) {
 }
 
 func TestToYAML(t *testing.T) {
-	configFile, err := os.Open("testdata/config.yaml")
+	configFile, err := os.Open("testdata/config_v1alpha2.yaml")
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, configFile.Close())
@@ -54,4 +54,24 @@ func TestToYAML(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, conf, conf2)
+}
+
+func TestMigration(t *testing.T) {
+	configFile, err := os.Open("testdata/config_v1alpha1.yaml")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, configFile.Close())
+	})
+
+	conf, err := config.FromYAML(configFile)
+	require.NoError(t, err)
+
+	var migratedConf bytes.Buffer
+	err = config.ToYAML(&migratedConf, conf)
+	require.NoError(t, err)
+
+	expectedConf, err := os.ReadFile("testdata/migrated_v1alpha1.yaml")
+	require.NoError(t, err)
+
+	require.YAMLEq(t, string(expectedConf), migratedConf.String())
 }

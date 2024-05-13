@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/noisysockets/noisysockets"
-	"github.com/noisysockets/noisysockets/config/v1alpha1"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
 	"github.com/noisysockets/noisysockets/examples/util/gateway"
 	"github.com/noisysockets/noisysockets/types"
 )
@@ -47,22 +47,22 @@ func main() {
 	defer stopGateway()
 
 	// Create a network for our "client" peer.
-	net, err := noisysockets.OpenNetwork(logger, &v1alpha1.Config{
+	net, err := noisysockets.OpenNetwork(logger, &latestconfig.Config{
 		PrivateKey: clientPrivateKey.String(),
 		IPs: []string{
 			"10.0.0.2",
 		},
-		DNS: &v1alpha1.DNSConfig{
+		DNS: &latestconfig.DNSConfig{
 			Nameservers: []string{"10.0.0.1"},
 		},
-		Routes: []v1alpha1.RouteConfig{
+		Routes: []latestconfig.RouteConfig{
 			{
 				// Route all IPv4 traffic through the gateway.
 				Destination: "0.0.0.0/0",
 				Via:         "gateway",
 			},
 		},
-		Peers: []v1alpha1.PeerConfig{
+		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "gateway",
 				PublicKey: gatewayPublicKey.String(),

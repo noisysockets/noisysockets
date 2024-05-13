@@ -16,25 +16,21 @@ import (
 	"strings"
 
 	"github.com/noisysockets/noisysockets/config/types"
-	latest "github.com/noisysockets/noisysockets/config/v1alpha1"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
 	"gopkg.in/ini.v1"
 )
 
 // FromINI reads a WireGuard INI configuration from the given reader and returns
 // the equivalent config object. This should only be used for importing existing
 // configurations.
-func FromINI(r io.Reader) (conf *latest.Config, err error) {
+func FromINI(r io.Reader) (conf *latestconfig.Config, err error) {
 	iniConf, err := ini.LoadSources(ini.LoadOptions{AllowNonUniqueSections: true}, r)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse INI config: %w", err)
 	}
 
-	conf = &latest.Config{
-		TypeMeta: types.TypeMeta{
-			APIVersion: latest.APIVersion,
-			Kind:       "Config",
-		},
-	}
+	conf = &latestconfig.Config{}
+	conf.PopulateTypeMeta()
 
 	ifaceSection := iniConf.Section("Interface")
 	if ifaceSection == nil {
@@ -64,7 +60,7 @@ func FromINI(r io.Reader) (conf *latest.Config, err error) {
 	key, err = ifaceSection.GetKey("DNS")
 	if err == nil {
 		if conf.DNS == nil {
-			conf.DNS = &latest.DNSConfig{}
+			conf.DNS = &latestconfig.DNSConfig{}
 		}
 
 		for _, dns := range strings.Split(key.String(), ",") {
@@ -77,7 +73,7 @@ func FromINI(r io.Reader) (conf *latest.Config, err error) {
 			continue
 		}
 
-		peerConf := latest.PeerConfig{}
+		peerConf := latestconfig.PeerConfig{}
 
 		key, err = peerSection.GetKey("PublicKey")
 		if err != nil {
@@ -114,7 +110,7 @@ func FromINI(r io.Reader) (conf *latest.Config, err error) {
 				peerName = peerConf.PublicKey
 			}
 
-			conf.Routes = append(conf.Routes, latest.RouteConfig{
+			conf.Routes = append(conf.Routes, latestconfig.RouteConfig{
 				Destination: prefix.String(),
 				Via:         peerName,
 			})
@@ -134,15 +130,15 @@ func FromINI(r io.Reader) (conf *latest.Config, err error) {
 // ToINI writes the given config object to the given writer in the WireGuard
 // INI format. This should only be used for exporting configuration.
 func ToINI(w io.Writer, versionedConf types.Config) error {
-	var conf *latest.Config
-	if versionedConf.GetAPIVersion() != latest.APIVersion {
+	var conf *latestconfig.Config
+	if versionedConf.GetAPIVersion() != latestconfig.APIVersion {
 		var err error
 		conf, err = migrate(versionedConf)
 		if err != nil {
 			return fmt.Errorf("failed to migrate config: %w", err)
 		}
 	} else {
-		conf = versionedConf.(*latest.Config)
+		conf = versionedConf.(*latestconfig.Config)
 	}
 
 	iniConf := ini.Empty(ini.LoadOptions{AllowNonUniqueSections: true})

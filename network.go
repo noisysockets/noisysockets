@@ -52,11 +52,12 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip/transport/icmp"
 	"github.com/noisysockets/netstack/pkg/tcpip/transport/tcp"
 	"github.com/noisysockets/netstack/pkg/tcpip/transport/udp"
-	"github.com/noisysockets/noisysockets/config/v1alpha1"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/dns"
 	"github.com/noisysockets/noisysockets/internal/dns/addrselect"
 	"github.com/noisysockets/noisysockets/internal/transport"
+	"github.com/noisysockets/noisysockets/internal/util"
 	"github.com/noisysockets/noisysockets/network"
 	"github.com/noisysockets/noisysockets/types"
 )
@@ -87,7 +88,7 @@ type NoisySocketsNetwork struct {
 // OpenNetwork creates a new network using the provided configuration.
 // The returned network is a userspace WireGuard peer that exposes
 // Dial() and Listen() methods compatible with the net package.
-func OpenNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, error) {
+func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (network.Network, error) {
 	var privateKey types.NoisePrivateKey
 	if err := privateKey.UnmarshalText([]byte(conf.PrivateKey)); err != nil {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
@@ -110,7 +111,7 @@ func OpenNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, e
 
 	// Parse local addresses.
 	var err error
-	net.localAddrs, err = parseAddrList(conf.IPs)
+	net.localAddrs, err = util.ParseAddrList(conf.IPs)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse local addresses: %w", err)
 	}
@@ -133,14 +134,14 @@ func OpenNetwork(logger *slog.Logger, conf *v1alpha1.Config) (network.Network, e
 	}
 
 	if conf.DNS != nil {
-		nameservers, err := parseAddrPortList(conf.DNS.Nameservers)
+		nameservers, err := util.ParseAddrPortList(conf.DNS.Nameservers)
 		if err != nil {
 			return nil, fmt.Errorf("could not parse nameserver addresses: %w", err)
 		}
 
 		var searchDomains []string
-		if conf.DNS.Search != nil {
-			searchDomains = append(searchDomains, conf.DNS.Search...)
+		if conf.DNS.SearchDomains != nil {
+			searchDomains = append(searchDomains, conf.DNS.SearchDomains...)
 		}
 
 		net.resolver = dns.NewResolver(net, nameservers, searchDomains)
@@ -496,7 +497,7 @@ func (net *NoisySocketsNetwork) ListenPacket(network, address string) (stdnet.Pa
 }
 
 // AddPeer adds a wireguard peer to the network.
-func (net *NoisySocketsNetwork) AddPeer(peerConf v1alpha1.PeerConfig) error {
+func (net *NoisySocketsNetwork) AddPeer(peerConf latestconfig.PeerConfig) error {
 	var publicKey types.NoisePublicKey
 	if err := publicKey.UnmarshalText([]byte(peerConf.PublicKey)); err != nil {
 		return fmt.Errorf("failed to parse peer public key: %w", err)

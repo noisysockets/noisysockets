@@ -7,7 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-package v1alpha1
+package v1alpha2
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ import (
 	"github.com/noisysockets/noisysockets/config/types"
 )
 
-const APIVersion = "noisysockets.github.com/v1alpha1"
+const APIVersion = "noisysockets.github.com/v1alpha2"
 
 // Config is the configuration for a NoisySockets network.
 // It is analogous to the configuration for a WireGuard interface.
@@ -30,10 +30,28 @@ type Config struct {
 	PrivateKey string `yaml:"privateKey" mapstructure:"privateKey"`
 	// IPs is a list of IP addresses assigned to this peer.
 	IPs []string `yaml:"ips,omitempty" mapstructure:"ips,omitempty"`
-	// DNSServers is an optional list of DNS servers to use for host resolution.
-	DNSServers []string `yaml:"dnsServers,omitempty" mapstructure:"dnsServers,omitempty"`
+	// DNS is the DNS configuration for this peer.
+	DNS *DNSConfig `yaml:"dns,omitempty" mapstructure:"dns,omitempty"`
+	// Routes is the routing table to use for the network.
+	Routes []RouteConfig `yaml:"routes,omitempty" mapstructure:"routes,omitempty"`
 	// Peers is a list of known peers to which we can send and receive packets.
 	Peers []PeerConfig `yaml:"peers,omitempty" mapstructure:"peers,omitempty"`
+}
+
+// DNSConfig is the configuration for DNS resolution.
+type DNSConfig struct {
+	// Nameservers is a list of DNS servers to use for DNS resolution.
+	Nameservers []string `yaml:"nameservers" mapstructure:"nameservers"`
+	// SearchDomains is a list of search domains to use for DNS resolution.
+	SearchDomains []string `yaml:"searchDomains,omitempty" mapstructure:"searchDomains,omitempty"`
+}
+
+// RouteConfig is the configuration for a route in the routing table.
+type RouteConfig struct {
+	// Destinations is a CIDR block for which this route should be used.
+	Destination string `yaml:"destination" mapstructure:"destination"`
+	// Via is the name (or public key) of the peer to use as the gateway for this route.
+	Via string `yaml:"via" mapstructure:"via"`
 }
 
 // PeerConfig is the configuration for a known wireguard peer.
@@ -48,10 +66,6 @@ type PeerConfig struct {
 	// IPs is a list of IP addresses assigned to the peer, this is optional for gateways.
 	// Traffic with a source IP not in this list will be dropped.
 	IPs []string `yaml:"ips,omitempty" mapstructure:"ips,omitempty"`
-	// DefaultGateway indicates this peer should be used as the default gateway for traffic.
-	DefaultGateway bool `yaml:"defaultGateway,omitempty" mapstructure:"defaultGateway,omitempty"`
-	// GatewayForCIDRs is a list of subnets for which this peer should be used as the gateway.
-	GatewayForCIDRs []string `yaml:"gatewayForCIDRs,omitempty" mapstructure:"gatewayForCIDRs,omitempty"`
 }
 
 func (c *Config) GetAPIVersion() string {

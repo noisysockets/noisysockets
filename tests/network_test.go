@@ -26,7 +26,7 @@ import (
 	"github.com/neilotoole/slogt"
 	"github.com/noisysockets/noisysockets"
 	"github.com/noisysockets/noisysockets/config"
-	"github.com/noisysockets/noisysockets/config/v1alpha1"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
 	"github.com/noisysockets/noisysockets/network"
 	"github.com/noisysockets/noisysockets/types"
 	"github.com/stretchr/testify/assert"
@@ -57,12 +57,12 @@ func TestNetwork(t *testing.T) {
 	})
 
 	go func() {
-		conf := v1alpha1.Config{
+		conf := latestconfig.Config{
 			Name:       "tcp-server",
 			ListenPort: 12345,
 			PrivateKey: tcpServerPrivateKey.String(),
 			IPs:        []string{"10.7.0.2"},
-			Peers: []v1alpha1.PeerConfig{
+			Peers: []latestconfig.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.Public().String(),
 					IPs:       []string{"10.7.0.1"},
@@ -108,12 +108,12 @@ func TestNetwork(t *testing.T) {
 	}()
 
 	go func() {
-		conf := v1alpha1.Config{
+		conf := latestconfig.Config{
 			Name:       "udp-server",
 			ListenPort: 12346,
 			PrivateKey: udpServerPrivateKey.String(),
 			IPs:        []string{"10.7.0.3"},
-			Peers: []v1alpha1.PeerConfig{
+			Peers: []latestconfig.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.Public().String(),
 					IPs:       []string{"10.7.0.1"},
@@ -161,12 +161,12 @@ func TestNetwork(t *testing.T) {
 		_ = udpConn.Close()
 	}()
 
-	conf := v1alpha1.Config{
+	conf := latestconfig.Config{
 		Name:       "client",
 		ListenPort: 12347,
 		PrivateKey: clientPrivateKey.String(),
 		IPs:        []string{"10.7.0.1"},
-		Peers: []v1alpha1.PeerConfig{
+		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "tcp-server",
 				PublicKey: tcpServerPrivateKey.Public().String(),
@@ -251,12 +251,12 @@ func TestAddAndRemovePeer(t *testing.T) {
 
 	var server1Net, server2Net network.Network
 	go func() {
-		conf := v1alpha1.Config{
+		conf := latestconfig.Config{
 			Name:       "server1",
 			ListenPort: 12345,
 			PrivateKey: server1PrivateKey.String(),
 			IPs:        []string{"10.7.0.2"},
-			Peers: []v1alpha1.PeerConfig{
+			Peers: []latestconfig.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.Public().String(),
 					IPs:       []string{"10.7.0.1"},
@@ -305,12 +305,12 @@ func TestAddAndRemovePeer(t *testing.T) {
 	}()
 
 	go func() {
-		conf := v1alpha1.Config{
+		conf := latestconfig.Config{
 			Name:       "server2",
 			ListenPort: 12346,
 			PrivateKey: server2PrivateKey.String(),
 			IPs:        []string{"10.7.0.3"},
-			Peers: []v1alpha1.PeerConfig{
+			Peers: []latestconfig.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.Public().String(),
 					IPs:       []string{"10.7.0.1"},
@@ -358,12 +358,12 @@ func TestAddAndRemovePeer(t *testing.T) {
 		_ = srv.Close()
 	}()
 
-	conf := v1alpha1.Config{
+	conf := latestconfig.Config{
 		Name:       "client",
 		ListenPort: 12347,
 		PrivateKey: clientPrivateKey.String(),
 		IPs:        []string{"10.7.0.1"},
-		Peers: []v1alpha1.PeerConfig{
+		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "server1",
 				PublicKey: server1PrivateKey.Public().String(),
@@ -403,7 +403,7 @@ func TestAddAndRemovePeer(t *testing.T) {
 	t.Log("Adding server 2 and making request")
 
 	// Add server 2.
-	err = net.(*noisysockets.NoisySocketsNetwork).AddPeer(v1alpha1.PeerConfig{
+	err = net.(*noisysockets.NoisySocketsNetwork).AddPeer(latestconfig.PeerConfig{
 		Name:      "server2",
 		PublicKey: server2PrivateKey.Public().String(),
 		Endpoint:  "localhost:12346",
