@@ -40,10 +40,11 @@ type Config struct {
 
 // DNSConfig is the configuration for DNS resolution.
 type DNSConfig struct {
+	// Domain is the optional default search domain to use for this network.
+	// If not specified, a default value of "my.nzzy.net." will be used.
+	Domain string `yaml:"domain,omitempty" mapstructure:"domain,omitempty"`
 	// Nameservers is a list of DNS servers to use for DNS resolution.
-	Nameservers []string `yaml:"nameservers" mapstructure:"nameservers"`
-	// SearchDomains is a list of search domains to use for DNS resolution.
-	SearchDomains []string `yaml:"searchDomains,omitempty" mapstructure:"searchDomains,omitempty"`
+	Nameservers []string `yaml:"nameservers,omitempty" mapstructure:"nameservers,omitempty"`
 }
 
 // RouteConfig is the configuration for a route in the routing table.

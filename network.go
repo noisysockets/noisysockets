@@ -139,12 +139,7 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (network.Networ
 			return nil, fmt.Errorf("could not parse nameserver addresses: %w", err)
 		}
 
-		var searchDomains []string
-		if conf.DNS.SearchDomains != nil {
-			searchDomains = append(searchDomains, conf.DNS.SearchDomains...)
-		}
-
-		net.resolver = dns.NewResolver(net, nameservers, searchDomains)
+		net.resolver = dns.NewResolver(net, nameservers)
 	}
 
 	sourceSink, err := newSourceSink(logger, net.rt, net.stack,
@@ -225,13 +220,6 @@ func (net *NoisySocketsNetwork) LookupHost(host string) ([]string, error) {
 		logger.Debug("Host is an IP address")
 
 		goto LOOKUP_HOST_DONE
-	}
-
-	// Trim any search domains from host.
-	if net.resolver != nil {
-		host = net.resolver.TrimSearchDomain(host)
-
-		logger.Debug("Trimmed search domains", slog.String("host", host))
 	}
 
 	// Host is the name of a peer.

@@ -18,7 +18,6 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/miekg/dns"
-	"github.com/miekg/dns/dnsutil"
 	"github.com/noisysockets/noisysockets/internal/dns/addrselect"
 	"github.com/noisysockets/noisysockets/internal/util"
 	"github.com/noisysockets/noisysockets/network"
@@ -26,13 +25,12 @@ import (
 
 // Resolver is a DNS resolver.
 type Resolver struct {
-	net           network.Network
-	nameservers   []netip.AddrPort
-	searchDomains []string
+	net         network.Network
+	nameservers []netip.AddrPort
 }
 
 // NewResolver creates a new DNS resolver.
-func NewResolver(net network.Network, nameservers []netip.AddrPort, searchDomains []string) *Resolver {
+func NewResolver(net network.Network, nameservers []netip.AddrPort) *Resolver {
 	// Use the default DNS port if none is specified.
 	for i, ns := range nameservers {
 		if ns.Port() == 0 {
@@ -40,15 +38,9 @@ func NewResolver(net network.Network, nameservers []netip.AddrPort, searchDomain
 		}
 	}
 
-	// Ensure that search domains are fully qualified domain names.
-	for i, searchDomain := range searchDomains {
-		searchDomains[i] = dns.Fqdn(searchDomain)
-	}
-
 	return &Resolver{
-		net:           net,
-		nameservers:   nameservers,
-		searchDomains: searchDomains,
+		net:         net,
+		nameservers: nameservers,
 	}
 }
 
@@ -104,20 +96,6 @@ func (r *Resolver) LookupHost(host string) ([]netip.Addr, error) {
 	}
 
 	return nil, &stdnet.DNSError{Err: "no such host", Name: host}
-}
-
-// TrimSearchDomain trims the search domain from a host name.
-func (r *Resolver) TrimSearchDomain(host string) string {
-	host = dns.Fqdn(host)
-
-	for _, searchDomain := range r.searchDomains {
-		trimmedHost := dnsutil.TrimDomainName(host, searchDomain)
-		if trimmedHost != host {
-			return trimmedHost
-		}
-	}
-
-	return host
 }
 
 func (r *Resolver) queryNameserver(client *dns.Client, nameserver netip.AddrPort, queryType uint16, host string) (*dns.Msg, error) {
