@@ -53,6 +53,7 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip/transport/icmp"
 	"github.com/noisysockets/netstack/pkg/tcpip/transport/tcp"
 	"github.com/noisysockets/netstack/pkg/tcpip/transport/udp"
+	"github.com/noisysockets/noisysockets/config"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/dns"
@@ -61,11 +62,6 @@ import (
 	"github.com/noisysockets/noisysockets/internal/util"
 	"github.com/noisysockets/noisysockets/network"
 	"github.com/noisysockets/noisysockets/types"
-)
-
-const (
-	// The default search domain to use for networks (if not specified).
-	DefaultDomain = "my.nzzy.net."
 )
 
 var (
@@ -115,7 +111,7 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (network.Networ
 		}),
 	}
 
-	net.domain = DefaultDomain
+	net.domain = config.DefaultDomain
 	if conf.DNS != nil && conf.DNS.Domain != "" {
 		net.domain = miekgdns.Fqdn(conf.DNS.Domain)
 	}

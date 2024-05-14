@@ -3,9 +3,9 @@ kind: Config
 listenPort: 12345
 privateKey: SFN1gntnAutVFefwrPDlM1W2/LGWaRSn2hq06TvL2GY=
 ips:
-- 10.7.0.2
+- 10.7.0.3
 routes:
-- destination: 192.168.0.0/24
+- destination: 0.0.0.0/0
   via: gateway
 peers:
 - name: server
@@ -16,3 +16,5 @@ peers:
 - name: gateway
   publicKey: aVHVSvdp1s9Cmw1r7XJgBSjXsSMpXdsskiuwPVYUdCk=
   endpoint: 127.0.0.1:12347
+  ips:
+  - 10.7.0.2

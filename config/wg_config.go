@@ -158,7 +158,12 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 		return fmt.Errorf("failed to create key: %w", err)
 	}
 
-	if _, err := ifaceSection.NewKey("ListenPort", fmt.Sprintf("%d", conf.ListenPort)); err != nil {
+	listenPort := uint16(DefaultListenPort)
+	if conf.ListenPort != 0 {
+		listenPort = conf.ListenPort
+	}
+
+	if _, err := ifaceSection.NewKey("ListenPort", fmt.Sprintf("%d", listenPort)); err != nil {
 		return fmt.Errorf("failed to create key: %w", err)
 	}
 
@@ -203,6 +208,7 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 		}
 
 		for _, ip := range peerConf.IPs {
+			var containedByPrefix bool
 			for _, prefix := range destinations {
 				addr, err := netip.ParseAddr(ip)
 				if err != nil {
@@ -210,11 +216,14 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 				}
 
 				if prefix.Contains(addr) {
-					continue
+					containedByPrefix = true
+					break
 				}
 			}
 
-			allowedIPs = append(allowedIPs, ip)
+			if !containedByPrefix {
+				allowedIPs = append(allowedIPs, ip)
+			}
 		}
 
 		if _, err := peerSection.NewKey("AllowedIPs", strings.Join(allowedIPs, ",")); err != nil {
