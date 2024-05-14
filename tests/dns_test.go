@@ -59,7 +59,7 @@ func TestLookupHost(t *testing.T) {
 	time.Sleep(time.Second)
 
 	// Create a new DNS resolver.
-	resolver := dns.NewResolver(network.Host(), []netip.AddrPort{nameserver})
+	resolver := dns.NewUDPResolver(network.Host(), []netip.AddrPort{nameserver})
 
 	// Perform a DNS query.
 	addrs, err := resolver.LookupHost("www.noisysockets.github.com")

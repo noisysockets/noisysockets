@@ -17,6 +17,7 @@ import (
 	"github.com/noisysockets/noisysockets/config/v1alpha1"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
 	"github.com/noisysockets/noisysockets/internal/util"
+	"github.com/noisysockets/noisysockets/networkutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -95,19 +96,9 @@ func migrate(versionedConf types.Config) (*latestconfig.Config, error) {
 }
 
 func migrateV1Alpha1ToV1Alpha2(conf *v1alpha1.Config) (*latestconfig.Config, error) {
-	localAddrs, err := util.ParseAddrList(conf.IPs)
+	interfaceAddrs, err := util.ParseAddrList(conf.IPs)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse local addresses: %w", err)
-	}
-
-	// What IP versions are we using?
-	var hasV4, hasV6 bool
-	for _, addr := range localAddrs {
-		if addr.Is4() {
-			hasV4 = true
-		} else if addr.Is6() {
-			hasV6 = true
-		}
 	}
 
 	migratedConf := &latestconfig.Config{}
@@ -136,10 +127,10 @@ func migrateV1Alpha1ToV1Alpha2(conf *v1alpha1.Config) (*latestconfig.Config, err
 
 	for _, peerConf := range conf.Peers {
 		if peerConf.DefaultGateway {
-			if hasV4 {
+			if networkutil.HasIPv4(interfaceAddrs) {
 				peerConf.GatewayForCIDRs = append(peerConf.GatewayForCIDRs, "0.0.0.0/0")
 			}
-			if hasV6 {
+			if networkutil.HasIPv6(interfaceAddrs) {
 				peerConf.GatewayForCIDRs = append(peerConf.GatewayForCIDRs, "::/0")
 			}
 		}

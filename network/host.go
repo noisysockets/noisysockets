@@ -21,44 +21,14 @@ func Host() Network {
 	return &hostNetwork{}
 }
 
-type hostNetwork struct {
-	hasV4, hasV6 *bool
-}
+type hostNetwork struct{}
 
 func (net *hostNetwork) Close() error {
 	return nil
 }
 
-func (net *hostNetwork) HasIPv4() bool {
-	if net.hasV4 == nil {
-		var hasV4 bool
-
-		lis, err := stdnet.Listen("tcp4", "127.0.0.1:0")
-		if err == nil {
-			_ = lis.Close()
-			hasV4 = true
-		}
-
-		net.hasV4 = &hasV4
-	}
-
-	return *net.hasV4
-}
-
-func (net *hostNetwork) HasIPv6() bool {
-	if net.hasV6 == nil {
-		var hasV6 bool
-
-		lis, err := stdnet.Listen("tcp6", "[::1]:0")
-		if err == nil {
-			_ = lis.Close()
-			hasV6 = true
-		}
-
-		net.hasV6 = &hasV6
-	}
-
-	return *net.hasV6
+func (net *hostNetwork) InterfaceAddrs() ([]stdnet.Addr, error) {
+	return stdnet.InterfaceAddrs()
 }
 
 func (net *hostNetwork) Hostname() (string, error) {

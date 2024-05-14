@@ -21,16 +21,17 @@ import (
 	"github.com/noisysockets/noisysockets/internal/dns/addrselect"
 	"github.com/noisysockets/noisysockets/internal/util"
 	"github.com/noisysockets/noisysockets/network"
+	"github.com/noisysockets/noisysockets/networkutil"
 )
 
-// Resolver is a DNS resolver.
-type Resolver struct {
+// udpResolver is a DNS resolver that uses DNS over UDP.
+type udpResolver struct {
 	net         network.Network
 	nameservers []netip.AddrPort
 }
 
-// NewResolver creates a new DNS resolver.
-func NewResolver(net network.Network, nameservers []netip.AddrPort) *Resolver {
+// NewUDPResolver creates a new DNS resolver that uses DNS over UDP.
+func NewUDPResolver(net network.Network, nameservers []netip.AddrPort) Resolver {
 	// Use the default DNS port if none is specified.
 	for i, ns := range nameservers {
 		if ns.Port() == 0 {
@@ -38,24 +39,33 @@ func NewResolver(net network.Network, nameservers []netip.AddrPort) *Resolver {
 		}
 	}
 
-	return &Resolver{
+	return &udpResolver{
 		net:         net,
 		nameservers: nameservers,
 	}
 }
 
-// LookupHost looks up the IP addresses for a given host.
-func (r *Resolver) LookupHost(host string) ([]netip.Addr, error) {
+func (r *udpResolver) LookupHost(host string) ([]netip.Addr, error) {
 	client := &dns.Client{
 		Net:     "udp",
 		Timeout: 10 * time.Second,
 	}
 
+	interfaceAddrs, err := r.net.InterfaceAddrs()
+	if err != nil {
+		return nil, fmt.Errorf("could not get interface addresses: %w", err)
+	}
+
+	netipAddrs, ok := networkutil.ToNetIPAddrs(interfaceAddrs)
+	if !ok {
+		return nil, fmt.Errorf("could not convert interface addresses")
+	}
+
 	var queryTypes []uint16
-	if r.net.HasIPv4() {
+	if networkutil.HasIPv4(netipAddrs) {
 		queryTypes = append(queryTypes, dns.TypeA)
 	}
-	if r.net.HasIPv6() {
+	if networkutil.HasIPv6(netipAddrs) {
 		queryTypes = append(queryTypes, dns.TypeAAAA)
 	}
 
@@ -98,7 +108,7 @@ func (r *Resolver) LookupHost(host string) ([]netip.Addr, error) {
 	return nil, &stdnet.DNSError{Err: "no such host", Name: host}
 }
 
-func (r *Resolver) queryNameserver(client *dns.Client, nameserver netip.AddrPort, queryType uint16, host string) (*dns.Msg, error) {
+func (r *udpResolver) queryNameserver(client *dns.Client, nameserver netip.AddrPort, queryType uint16, host string) (*dns.Msg, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
 	defer cancel()
 

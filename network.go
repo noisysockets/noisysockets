@@ -63,6 +63,11 @@ import (
 	"github.com/noisysockets/noisysockets/types"
 )
 
+const (
+	// The default search domain to use for networks (if not specified).
+	DefaultDomain = "my.nzzy.net."
+)
+
 var (
 	ErrCanceled          = fmt.Errorf("operation was canceled")
 	ErrTimeout           = fmt.Errorf("i/o timeout")
@@ -75,16 +80,15 @@ var (
 var protoSplitter = regexp.MustCompile(`^(tcp|udp)(4|6)?$`)
 
 type NoisySocketsNetwork struct {
-	logger       *slog.Logger
-	peers        *peerList
-	rt           *routingTable
-	transport    *transport.Transport
-	stack        *stack.Stack
-	hostname     string
-	localAddrs   []netip.Addr
-	domain       string
-	hasV4, hasV6 bool
-	resolver     *dns.Resolver
+	logger         *slog.Logger
+	peers          *peerList
+	rt             *routingTable
+	transport      *transport.Transport
+	stack          *stack.Stack
+	hostname       string
+	interfaceAddrs []netip.Addr
+	domain         string
+	resolver       dns.Resolver
 }
 
 // OpenNetwork creates a new network using the provided configuration.
@@ -111,45 +115,36 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (network.Networ
 		}),
 	}
 
+	net.domain = DefaultDomain
 	if conf.DNS != nil && conf.DNS.Domain != "" {
 		net.domain = miekgdns.Fqdn(conf.DNS.Domain)
 	}
 
 	// Parse local addresses.
 	var err error
-	net.localAddrs, err = util.ParseAddrList(conf.IPs)
+	net.interfaceAddrs, err = util.ParseAddrList(conf.IPs)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse local addresses: %w", err)
-	}
-
-	// What IP versions are we using?
-	for _, addr := range net.localAddrs {
-		if addr.Is4() {
-			net.hasV4 = true
-		} else if addr.Is6() {
-			net.hasV6 = true
-		}
 	}
 
 	// Add the local node to the list of peers.
 	net.hostname = conf.Name
 	if net.hostname != "" {
 		p := newPeer(nil, net.hostname, publicKey)
-		p.AddAddresses(net.localAddrs...)
+		p.AddAddresses(net.interfaceAddrs...)
 		net.peers.add(p)
 	}
 
-	if conf.DNS != nil {
+	if conf.DNS != nil && len(conf.DNS.Nameservers) > 0 {
 		nameservers, err := util.ParseAddrPortList(conf.DNS.Nameservers)
 		if err != nil {
 			return nil, fmt.Errorf("could not parse nameserver addresses: %w", err)
 		}
 
-		net.resolver = dns.NewResolver(net, nameservers)
+		net.resolver = dns.NewUDPResolver(net, nameservers)
 	}
 
-	sourceSink, err := newSourceSink(logger, net.rt, net.stack,
-		net.localAddrs, net.hasV4, net.hasV6)
+	sourceSink, err := newSourceSink(logger, net.rt, net.stack, net.interfaceAddrs)
 	if err != nil {
 		return nil, fmt.Errorf("could not create source sink: %w", err)
 	}
@@ -200,16 +195,19 @@ func (net *NoisySocketsNetwork) Close() error {
 	return nil
 }
 
-func (net *NoisySocketsNetwork) HasIPv4() bool {
-	return net.hasV4
-}
-
-func (net *NoisySocketsNetwork) HasIPv6() bool {
-	return net.hasV6
-}
-
 func (net *NoisySocketsNetwork) Hostname() (string, error) {
 	return net.hostname, nil
+}
+
+func (net *NoisySocketsNetwork) InterfaceAddrs() ([]stdnet.Addr, error) {
+	var addrs []stdnet.Addr
+	for _, addr := range net.interfaceAddrs {
+		addrs = append(addrs, &stdnet.IPAddr{
+			IP: stdnet.IP(addr.AsSlice()),
+		})
+	}
+
+	return addrs, nil
 }
 
 func (net *NoisySocketsNetwork) LookupHost(host string) ([]string, error) {
@@ -228,22 +226,27 @@ func (net *NoisySocketsNetwork) LookupHost(host string) ([]string, error) {
 		goto LOOKUP_HOST_DONE
 	}
 
-	// Trim the domain suffix from the host (if present).
-	if strings.Count(host, ".") > 1 && net.domain != "" {
-		host = strings.TrimSuffix(miekgdns.Fqdn(host), net.domain)
-	}
+	// Fully qualify the host name (if not already).
+	host = miekgdns.Fqdn(host)
 
-	// Host is the name of a peer.
-	if p, ok := net.peers.getByName(strings.TrimSuffix(host, ".")); ok {
-		addrs = p.Addresses()
+	{
+		// Check if the host name is a peer name (strip the default search domain suffix if present).
+		peerName := strings.TrimSuffix(strings.TrimSuffix(host, net.domain), ".")
 
-		logger.Debug("Host is the name of a peer")
+		// Host is the name of a peer.
+		if p, ok := net.peers.getByName(peerName); ok {
+			addrs = p.Addresses()
 
-		goto LOOKUP_HOST_DONE
+			logger.Debug("Host is the name of a peer")
+
+			goto LOOKUP_HOST_DONE
+		}
 	}
 
 	// Host is a DNS name.
 	if net.resolver != nil {
+		logger.Debug("Resolving host, using DNS")
+
 		var err error
 		addrs, err = net.resolver.LookupHost(host)
 		if err != nil {
@@ -409,7 +412,7 @@ func (net *NoisySocketsNetwork) Listen(network, address string) (stdnet.Listener
 
 		addr = netip.AddrPortFrom(ip, uint16(port))
 	} else {
-		for _, localAddr := range net.localAddrs {
+		for _, localAddr := range net.interfaceAddrs {
 			if localAddr.Is6() && acceptV6 {
 				addr = netip.AddrPortFrom(localAddr, uint16(port))
 				break
@@ -474,7 +477,7 @@ func (net *NoisySocketsNetwork) ListenPacket(network, address string) (stdnet.Pa
 
 		addr = netip.AddrPortFrom(ip, uint16(port))
 	} else {
-		for _, localAddr := range net.localAddrs {
+		for _, localAddr := range net.interfaceAddrs {
 			if localAddr.Is6() && acceptV6 {
 				addr = netip.AddrPortFrom(localAddr, uint16(port))
 				break

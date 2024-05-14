@@ -49,6 +49,7 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/transport"
+	"github.com/noisysockets/noisysockets/networkutil"
 	"github.com/noisysockets/noisysockets/types"
 )
 
@@ -61,26 +62,26 @@ var (
 )
 
 type sourceSink struct {
-	logger       *slog.Logger
-	debugLogging bool
-	rt           *routingTable
-	stack        *stack.Stack
-	ep           *channel.Endpoint
-	notifyHandle *channel.NotificationHandle
-	incoming     chan *stack.PacketBuffer
-	localAddrs   []netip.Addr
+	logger         *slog.Logger
+	debugLogging   bool
+	rt             *routingTable
+	stack          *stack.Stack
+	ep             *channel.Endpoint
+	notifyHandle   *channel.NotificationHandle
+	incoming       chan *stack.PacketBuffer
+	interfaceAddrs []netip.Addr
 }
 
 func newSourceSink(logger *slog.Logger, rt *routingTable, s *stack.Stack,
-	localAddrs []netip.Addr, hasV4 bool, hasV6 bool) (*sourceSink, error) {
+	interfaceAddrs []netip.Addr) (*sourceSink, error) {
 	ss := &sourceSink{
-		logger:       logger,
-		debugLogging: logger.Enabled(context.Background(), slog.LevelDebug),
-		rt:           rt,
-		stack:        s,
-		ep:           channel.New(queueSize, uint32(transport.DefaultMTU), ""),
-		incoming:     make(chan *stack.PacketBuffer),
-		localAddrs:   localAddrs,
+		logger:         logger,
+		debugLogging:   logger.Enabled(context.Background(), slog.LevelDebug),
+		rt:             rt,
+		stack:          s,
+		ep:             channel.New(queueSize, uint32(transport.DefaultMTU), ""),
+		incoming:       make(chan *stack.PacketBuffer),
+		interfaceAddrs: interfaceAddrs,
 	}
 
 	ss.notifyHandle = ss.ep.AddNotify(ss)
@@ -91,13 +92,13 @@ func newSourceSink(logger *slog.Logger, rt *routingTable, s *stack.Stack,
 
 	// Add default routes.
 	var routes []tcpip.Route
-	if hasV4 {
+	if networkutil.HasIPv4(interfaceAddrs) {
 		routes = append(routes, tcpip.Route{
 			NIC:         1,
 			Destination: header.IPv4EmptySubnet,
 		})
 	}
-	if hasV6 {
+	if networkutil.HasIPv6(interfaceAddrs) {
 		routes = append(routes, tcpip.Route{
 			NIC:         1,
 			Destination: header.IPv6EmptySubnet,
@@ -106,7 +107,7 @@ func newSourceSink(logger *slog.Logger, rt *routingTable, s *stack.Stack,
 	ss.stack.SetRouteTable(routes)
 
 	// Assign local addresses to the nic.
-	for _, addr := range localAddrs {
+	for _, addr := range interfaceAddrs {
 		var protoNumber tcpip.NetworkProtocolNumber
 		if addr.Is4() {
 			protoNumber = ipv4.ProtocolNumber

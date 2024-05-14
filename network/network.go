@@ -20,12 +20,10 @@ import (
 // Network is an interface that abstracts the standard library's network operations.
 type Network interface {
 	io.Closer
-	// HasIPv4 returns true if the network supports IPv4.
-	HasIPv4() bool
-	// HasIPv6 returns true if the network supports IPv6.
-	HasIPv6() bool
 	// Hostname returns the hostname of the local machine.
 	Hostname() (string, error)
+	// InterfaceAddrs returns a list of the network interfaces addresses.
+	InterfaceAddrs() ([]stdnet.Addr, error)
 	// LookupHost looks up the given host using the local resolver. It returns a slice of that host's addresses.
 	LookupHost(host string) ([]string, error)
 	// Dial connects to the address on the named network.
@@ -35,7 +33,7 @@ type Network interface {
 	DialContext(ctx context.Context, network, address string) (stdnet.Conn, error)
 	// Listen listens for incoming connections on the network address.
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only).
-	// If the address is an empty string, Listen listens on all available interfaces.
+	// If the address is an empty string, Listen listens on all available addresses.
 	Listen(network, address string) (stdnet.Listener, error)
 	// ListenPacket listens for incoming packets addressed to the local address.
 	// Known networks are "udp", "udp4" (IPv4-only), "udp6" (IPv6-only).
