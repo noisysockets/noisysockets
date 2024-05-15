@@ -53,6 +53,9 @@ type SourceSink interface {
 	// each packet contained within the bufs slice.
 	Write(bufs [][]byte, sources []types.NoisePublicKey, offset int) (int, error)
 
+	// MTU returns the maximum transmission unit of the source/sink.
+	MTU() int
+
 	// BatchSize returns the preferred/max number of packets that can be read or
 	// written in a single read/write call. BatchSize must not change over the
 	// lifetime of a Transport.

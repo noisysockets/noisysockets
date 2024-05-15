@@ -235,6 +235,10 @@ func (discardingSink) Write(bufs [][]byte, sources []types.NoisePublicKey, offse
 	return 0, nil
 }
 
+func (discardingSink) MTU() int {
+	return 1420
+}
+
 func (discardingSink) BatchSize() int {
 	return 1
 }

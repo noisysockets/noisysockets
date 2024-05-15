@@ -262,6 +262,10 @@ func (ss *sourceSink) Write(bufs [][]byte, sources []types.NoisePublicKey, offse
 	return len(bufs), nil
 }
 
+func (ss *sourceSink) MTU() int {
+	return int(ss.ep.MTU())
+}
+
 func (ss *sourceSink) BatchSize() int {
 	return conn.IdealBatchSize
 }

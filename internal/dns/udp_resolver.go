@@ -11,12 +11,12 @@ package dns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	stdnet "net"
 	"net/netip"
 	"time"
 
-	"github.com/hashicorp/go-multierror"
 	"github.com/miekg/dns"
 	"github.com/noisysockets/noisysockets/internal/dns/addrselect"
 	"github.com/noisysockets/noisysockets/internal/util"
@@ -75,13 +75,13 @@ func (r *udpResolver) LookupHost(host string) ([]netip.Addr, error) {
 	shuffledNameservers = util.Shuffle(shuffledNameservers)
 
 	var addrs []netip.Addr
-	var queryErr *multierror.Error
+	var queryErr error
 
 	for _, ns := range shuffledNameservers {
 		for _, queryType := range queryTypes {
 			in, err := r.queryNameserver(client, ns, queryType, host)
 			if err != nil {
-				queryErr = multierror.Append(queryErr, err)
+				queryErr = errors.Join(queryErr, err)
 				continue
 			}
 

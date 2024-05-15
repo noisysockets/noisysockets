@@ -499,8 +499,8 @@ func (transport *Transport) RoutineEncryption(id int) {
 			binary.LittleEndian.PutUint32(fieldReceiver, elem.keypair.remoteIndex)
 			binary.LittleEndian.PutUint64(fieldNonce, elem.nonce)
 
-			// pad content to multiple of 16
-			paddingSize := calculatePaddingSize(len(elem.packet), DefaultMTU)
+			// pad content to multiple of 16 bytes
+			paddingSize := calculatePaddingSize(len(elem.packet), transport.sourceSink.MTU())
 			elem.packet = append(elem.packet, paddingZeros[:paddingSize]...)
 
 			// encrypt content and release to consumer
