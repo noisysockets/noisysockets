@@ -13,7 +13,6 @@ require (
 	golang.org/x/sys v0.19.0
 	gopkg.in/ini.v1 v1.67.0
 	gopkg.in/yaml.v3 v3.0.1
-	lukechampine.com/uint128 v1.3.0
 )
 
 require (

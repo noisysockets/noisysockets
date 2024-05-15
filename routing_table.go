@@ -15,9 +15,9 @@ import (
 	"net/netip"
 	"sync"
 
+	"github.com/noisysockets/noisysockets/internal/uint128"
 	"github.com/noisysockets/noisysockets/internal/util"
 	"github.com/rdleal/intervalst/interval"
-	"lukechampine.com/uint128"
 )
 
 type peerWithPrefix struct {
