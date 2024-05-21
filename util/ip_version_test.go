@@ -7,13 +7,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-package networkutil_test
+package util_test
 
 import (
 	"net/netip"
 	"testing"
 
-	"github.com/noisysockets/noisysockets/networkutil"
+	"github.com/noisysockets/noisysockets/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,10 +23,10 @@ func TestIPVersion(t *testing.T) {
 			netip.MustParseAddr("127.0.0.1"),
 		}
 
-		hasV4 := networkutil.HasIPv4(addrs)
+		hasV4 := util.HasIPv4(addrs)
 		require.True(t, hasV4)
 
-		hasV6 := networkutil.HasIPv6(addrs)
+		hasV6 := util.HasIPv6(addrs)
 		require.False(t, hasV6)
 	})
 
@@ -35,10 +35,10 @@ func TestIPVersion(t *testing.T) {
 			netip.MustParseAddr("::1"),
 		}
 
-		hasV4 := networkutil.HasIPv4(addrs)
+		hasV4 := util.HasIPv4(addrs)
 		require.False(t, hasV4)
 
-		hasV6 := networkutil.HasIPv6(addrs)
+		hasV6 := util.HasIPv6(addrs)
 		require.True(t, hasV6)
 	})
 
@@ -48,10 +48,10 @@ func TestIPVersion(t *testing.T) {
 			netip.MustParseAddr("::1"),
 		}
 
-		hasV4 := networkutil.HasIPv4(addrs)
+		hasV4 := util.HasIPv4(addrs)
 		require.True(t, hasV4)
 
-		hasV6 := networkutil.HasIPv6(addrs)
+		hasV6 := util.HasIPv6(addrs)
 		require.True(t, hasV6)
 	})
 }

@@ -37,12 +37,15 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"net/netip"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/noisysockets/noisysockets/internal/conn"
-	"github.com/noisysockets/noisysockets/types"
 	"golang.org/x/crypto/chacha20poly1305"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 type QueueHandshakeElement struct {
@@ -84,7 +87,6 @@ func (peer *Peer) keepKeyFreshReceiving() error {
 	if peer.timers.sentLastMinuteHandshake.Load() {
 		return nil
 	}
-
 	keypair := peer.keypairs.Current()
 	if keypair != nil && keypair.isInitiator && time.Since(keypair.created) > (RejectAfterTime-KeepaliveTimeout-RekeyTimeout) {
 		peer.timers.sentLastMinuteHandshake.Store(true)
@@ -92,11 +94,10 @@ func (peer *Peer) keepKeyFreshReceiving() error {
 			return err
 		}
 	}
-
 	return nil
 }
 
-/* Receives incoming datagrams for the transport
+/* Receives incoming datagrams for the device
  *
  * Every time the bind is updated a new routine is started for
  * IPv4 and IPv6 (separately)
@@ -147,6 +148,14 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 			transport.logger.Warn("Failed to receive packet",
 				slog.String("recvName", recvName),
 				slog.Any("error", err))
+
+			if !os.IsTimeout(err) {
+				transport.logger.Warn("Receive error is not a timeout, stopping receive routine",
+					slog.String("recvName", recvName),
+					slog.Any("error", err))
+				return
+			}
+
 			if deathSpiral < 10 {
 				deathSpiral++
 				time.Sleep(time.Second / 3)
@@ -298,7 +307,8 @@ func (transport *Transport) RoutineDecryption(id int) {
 	}
 }
 
-// Handles incoming packets related to handshake.
+/* Handles incoming packets related to handshake
+ */
 func (transport *Transport) RoutineHandshake(id int) {
 	logger := transport.logger.With(slog.Int("id", id))
 
@@ -439,8 +449,6 @@ func (transport *Transport) RoutineHandshake(id int) {
 				goto skip
 			}
 
-			logger := logger.With(slog.String("peer", peer.String()))
-
 			// update endpoint
 			peer.SetEndpoint(elem.endpoint)
 
@@ -453,7 +461,10 @@ func (transport *Transport) RoutineHandshake(id int) {
 			peer.timersAnyAuthenticatedPacketReceived()
 
 			// derive keypair
-			if err := peer.BeginSymmetricSession(); err != nil {
+
+			err = peer.BeginSymmetricSession()
+
+			if err != nil {
 				logger.Error("Failed to derive keypair", slog.Any("error", err))
 				goto skip
 			}
@@ -464,6 +475,8 @@ func (transport *Transport) RoutineHandshake(id int) {
 				logger.Error("Failed to send keepalive", slog.Any("error", err))
 				goto skip
 			}
+
+			logger.Debug("Handshake complete", slog.String("peer", peer.String()))
 		}
 	skip:
 		transport.PutMessageBuffer(elem.buffer)
@@ -471,9 +484,9 @@ func (transport *Transport) RoutineHandshake(id int) {
 }
 
 func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
-	t := peer.transport
+	transport := peer.transport
 
-	logger := t.logger.With(slog.String("peer", peer.String()))
+	logger := transport.logger.With(slog.String("peer", peer.String()))
 
 	defer func() {
 		logger.Debug("Routine: sequential receiver - stopped")
@@ -482,11 +495,7 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 	logger.Debug("Routine: sequential receiver - started")
 
 	bufs := make([][]byte, 0, maxBatchSize)
-
-	peers := make([]types.NoisePublicKey, 0, maxBatchSize)
-	for i := 0; i < maxBatchSize; i++ {
-		peers = append(peers, peer.pk)
-	}
+	sizes := make([]int, maxBatchSize)
 
 	for elemsContainer := range peer.queue.inbound.c {
 		if elemsContainer == nil {
@@ -523,7 +532,52 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 			}
 			dataPacketReceived = true
 
-			bufs = append(bufs, elem.buffer[:MessageTransportOffsetContent+len(elem.packet)])
+			switch elem.packet[0] >> 4 {
+			case 4:
+				if len(elem.packet) < ipv4.HeaderLen {
+					continue
+				}
+				field := elem.packet[IPv4offsetTotalLength : IPv4offsetTotalLength+2]
+				length := binary.BigEndian.Uint16(field)
+				if int(length) > len(elem.packet) || int(length) < ipv4.HeaderLen {
+					continue
+				}
+				elem.packet = elem.packet[:length]
+				src := elem.packet[IPv4offsetSrc : IPv4offsetSrc+net.IPv4len]
+				if transport.allowedips.Lookup(src) != peer {
+					srcAddr, _ := netip.AddrFromSlice(src)
+					logger.Warn("IPv4 packet with disallowed source address",
+						slog.String("srcAddr", srcAddr.String()))
+					continue
+				}
+
+			case 6:
+				if len(elem.packet) < ipv6.HeaderLen {
+					continue
+				}
+				field := elem.packet[IPv6offsetPayloadLength : IPv6offsetPayloadLength+2]
+				length := binary.BigEndian.Uint16(field)
+				length += ipv6.HeaderLen
+				if int(length) > len(elem.packet) {
+					continue
+				}
+				elem.packet = elem.packet[:length]
+				src := elem.packet[IPv6offsetSrc : IPv6offsetSrc+net.IPv6len]
+				if transport.allowedips.Lookup(src) != peer {
+					srcAddr, _ := netip.AddrFromSlice(src)
+					logger.Warn("IPv6 packet with disallowed source address",
+						slog.String("srcAddr", srcAddr.String()))
+					continue
+				}
+
+			default:
+				logger.Warn("Packet with invalid IP version")
+				continue
+			}
+
+			buf := elem.buffer[:MessageTransportOffsetContent+len(elem.packet)]
+			bufs = append(bufs, buf)
+			sizes = append(sizes, len(elem.packet))
 		}
 
 		peer.rxBytes.Add(rxBytesLen)
@@ -531,7 +585,6 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 			peer.SetEndpoint(elemsContainer.elems[validTailPacket].endpoint)
 			if err := peer.keepKeyFreshReceiving(); err != nil {
 				logger.Warn("Failed to keep key fresh", slog.Any("error", err))
-				continue
 			}
 			peer.timersAnyAuthenticatedPacketTraversal()
 			peer.timersAnyAuthenticatedPacketReceived()
@@ -540,16 +593,17 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 			peer.timersDataReceived()
 		}
 		if len(bufs) > 0 {
-			_, err := t.sourceSink.Write(bufs, peers, MessageTransportOffsetContent)
-			if err != nil && !t.isClosed() {
-				logger.Error("Failed to write packets to source sink", slog.Any("error", err))
+			_, err := transport.nic.nic.Write(transport.ctx, bufs, sizes, MessageTransportOffsetContent)
+			if err != nil && !transport.isClosed() {
+				logger.Error("Failed to write packets to network interface", slog.Any("error", err))
 			}
 		}
 		for _, elem := range elemsContainer.elems {
-			t.PutMessageBuffer(elem.buffer)
-			t.PutInboundElement(elem)
+			transport.PutMessageBuffer(elem.buffer)
+			transport.PutInboundElement(elem)
 		}
 		bufs = bufs[:0]
-		t.PutInboundElementsContainer(elemsContainer)
+		sizes = sizes[:0]
+		transport.PutInboundElementsContainer(elemsContainer)
 	}
 }

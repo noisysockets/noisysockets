@@ -32,6 +32,7 @@
 package transport
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"runtime"
@@ -39,12 +40,17 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/ratelimiter"
 	"github.com/noisysockets/noisysockets/types"
 )
 
+const DefaultMTU = 1420
+
 type Transport struct {
+	ctx    context.Context
+	cancel context.CancelFunc
 	logger *slog.Logger
 
 	state struct {
@@ -89,6 +95,7 @@ type Transport struct {
 		limiter        ratelimiter.Ratelimiter
 	}
 
+	allowedips    AllowedIPs
 	indexTable    IndexTable
 	cookieChecker CookieChecker
 
@@ -106,7 +113,10 @@ type Transport struct {
 		handshake  *handshakeQueue
 	}
 
-	sourceSink SourceSink
+	nic struct {
+		nic network.Interface
+		mtu atomic.Int32
+	}
 
 	closed chan struct{}
 }
@@ -160,6 +170,7 @@ func (transport *Transport) isUp() bool {
 // Must hold transport.peers.Lock()
 func removePeerLocked(transport *Transport, peer *Peer, key types.NoisePublicKey) {
 	// stop routing and processing of packets
+	transport.allowedips.RemoveByPeer(peer)
 	peer.Stop()
 
 	// remove from peer map
@@ -310,13 +321,15 @@ func (transport *Transport) SetPrivateKey(sk types.NoisePrivateKey) {
 	}
 }
 
-func NewTransport(logger *slog.Logger, sourceSink SourceSink, bind conn.Bind) *Transport {
+func NewTransport(ctx context.Context, logger *slog.Logger, nic network.Interface, bind conn.Bind) *Transport {
 	t := new(Transport)
 	t.state.state.Store(uint32(transportStateDown))
 	t.closed = make(chan struct{})
 	t.logger = logger
+	t.ctx, t.cancel = context.WithCancel(ctx)
 	t.net.bind = bind
-	t.sourceSink = sourceSink
+	t.nic.nic = nic
+	t.nic.mtu.Store(int32(t.nic.nic.MTU()))
 	t.peers.keyMap = make(map[types.NoisePublicKey]*Peer)
 	t.rate.limiter.Init()
 	t.indexTable.Init()
@@ -342,7 +355,7 @@ func NewTransport(logger *slog.Logger, sourceSink SourceSink, bind conn.Bind) *T
 
 	t.state.stopping.Add(1)
 	t.queue.encryption.wg.Add(1)
-	go t.RoutineReadFromSourceSink()
+	go t.RoutineReadFromNIC()
 
 	return t
 }
@@ -353,7 +366,7 @@ func NewTransport(logger *slog.Logger, sourceSink SourceSink, bind conn.Bind) *T
 // the lifetime of the transport.
 func (transport *Transport) BatchSize() int {
 	size := transport.net.bind.BatchSize()
-	dSize := transport.sourceSink.BatchSize()
+	dSize := transport.nic.nic.BatchSize()
 	if size < dSize {
 		size = dSize
 	}
@@ -409,7 +422,7 @@ func (transport *Transport) Close() error {
 	transport.state.state.Store(uint32(transportStateClosed))
 	transport.logger.Debug("Transport closing")
 
-	_ = transport.sourceSink.Close()
+	_ = transport.nic.nic.Close()
 	_ = transport.downLocked()
 
 	// Remove peers before closing queues,
@@ -427,6 +440,9 @@ func (transport *Transport) Close() error {
 	if err := transport.rate.limiter.Close(); err != nil {
 		return fmt.Errorf("failed to close rate limiter: %w", err)
 	}
+
+	// Cancel the context to stop all workers.
+	transport.cancel()
 
 	transport.logger.Debug("Transport closed")
 	close(transport.closed)

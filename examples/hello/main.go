@@ -13,9 +13,9 @@ import (
 
 	stdnet "net"
 
+	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
-	"github.com/noisysockets/noisysockets/network"
 	"github.com/noisysockets/noisysockets/types"
 )
 
@@ -101,7 +101,7 @@ func startServer(logger *slog.Logger, net network.Network, readyCh chan<- struct
 	for {
 		conn, err := lis.Accept()
 		if err != nil {
-			if errors.Is(err, stdnet.ErrClosed) {
+			if errors.Is(err, stdnet.ErrClosed) || network.IsStackClosed(err) {
 				return
 			}
 

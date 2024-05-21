@@ -9,22 +9,13 @@
 
 package util
 
-import (
-	"crypto/rand"
-	"math/big"
-)
+import "fmt"
 
-// Shuffle shuffles the elements of a slice.
-func Shuffle[T any](s []T) []T {
-	n := len(s)
-	for i := n - 1; i > 0; i-- {
-		jBig, err := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
-		if err != nil {
-			panic(err)
-		}
-
-		j := int(jBig.Int64())
-		s[i], s[j] = s[j], s[i]
+// Strings converts a slice of objects that implement fmt.Stringer to a slice of strings.
+func Strings[T fmt.Stringer](s []T) []string {
+	strings := make([]string, len(s))
+	for i, v := range s {
+		strings[i] = v.String()
 	}
-	return s
+	return strings
 }

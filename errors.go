@@ -7,12 +7,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-package dns
+package noisysockets
 
-import "net/netip"
+import "errors"
 
-// Resolver is a DNS resolver.
-type Resolver interface {
-	// LookupHost looks up the IP addresses for a given host.
-	LookupHost(host string) ([]netip.Addr, error)
-}
+var (
+	ErrUnknownPeer = errors.New("unknown peer")
+)

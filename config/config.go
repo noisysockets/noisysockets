@@ -16,8 +16,7 @@ import (
 	"github.com/noisysockets/noisysockets/config/types"
 	"github.com/noisysockets/noisysockets/config/v1alpha1"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
-	"github.com/noisysockets/noisysockets/internal/util"
-	"github.com/noisysockets/noisysockets/networkutil"
+	"github.com/noisysockets/noisysockets/util"
 	"gopkg.in/yaml.v3"
 )
 
@@ -127,10 +126,10 @@ func migrateV1Alpha1ToV1Alpha2(conf *v1alpha1.Config) (*latestconfig.Config, err
 
 	for _, peerConf := range conf.Peers {
 		if peerConf.DefaultGateway {
-			if networkutil.HasIPv4(interfaceAddrs) {
+			if util.HasIPv4(interfaceAddrs) {
 				peerConf.GatewayForCIDRs = append(peerConf.GatewayForCIDRs, "0.0.0.0/0")
 			}
-			if networkutil.HasIPv6(interfaceAddrs) {
+			if util.HasIPv6(interfaceAddrs) {
 				peerConf.GatewayForCIDRs = append(peerConf.GatewayForCIDRs, "::/0")
 			}
 		}

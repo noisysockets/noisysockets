@@ -18,9 +18,7 @@ test:
   COPY go.mod go.sum .
   RUN go mod download
   COPY . .
-  RUN go test -coverprofile=coverage.out -v ./...
-  SAVE ARTIFACT coverage.out AS LOCAL coverage.out
-  WORKDIR /workspace/tests
+  WORKDIR /workspace/test
   WITH DOCKER
     RUN go test -timeout=300s -v ./...
   END
@@ -30,6 +28,17 @@ test:
         go run "$example" || exit 1; \
       done
   END
+
+examples:
+  COPY go.mod go.sum .
+  RUN go mod download
+  COPY . .
+  RUN mkdir /workspace/dist
+  WORKDIR /workspace/examples
+  RUN for example in $(find . -name 'main.go'); do \
+      (cd "${example%/main.go}" && go build -o "/workspace/dist/${example%/main.go}" .); \
+    done
+  SAVE ARTIFACT /workspace/dist AS LOCAL dist
 
 tools:
   RUN apt update && apt install -y ca-certificates curl jq

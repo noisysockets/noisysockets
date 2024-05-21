@@ -36,20 +36,21 @@ import (
 	"encoding/binary"
 	"errors"
 	"log/slog"
+	"net"
+	"net/netip"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/noisysockets/noisysockets/internal/conn"
-	"github.com/noisysockets/noisysockets/types"
 	"golang.org/x/crypto/chacha20poly1305"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
-
-const DefaultMTU = 1420
 
 /* Outbound flow
  *
- * 1. Source queue
+ * 1. TUN queue
  * 2. Routing (sequential)
  * 3. Nonce assignment (sequential)
  * 4. Encryption (parallel)
@@ -129,7 +130,7 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 	endpoint := peer.endpoint.val
 	peer.endpoint.Unlock()
 
-	// If we don't have an endpoint, ignore the request.
+	// If we don't have a destination endpoint, ignore the request.
 	if endpoint == nil {
 		return nil
 	}
@@ -157,17 +158,13 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 
 	msg, err := peer.transport.CreateMessageInitiation(peer)
 	if err != nil {
-		logger.Error("Failed to create initiation message", slog.Any("error", err))
+		logger.Warn("Failed to create initiation message", slog.Any("error", err))
 		return err
 	}
 
 	var buf [MessageInitiationSize]byte
 	writer := bytes.NewBuffer(buf[:0])
-	if err := binary.Write(writer, binary.LittleEndian, msg); err != nil {
-		logger.Error("Failed to write initiation message", slog.Any("error", err))
-		return err
-	}
-
+	_ = binary.Write(writer, binary.LittleEndian, msg)
 	packet := writer.Bytes()
 	peer.cookieGenerator.AddMacs(packet)
 
@@ -176,7 +173,7 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 
 	err = peer.SendBuffers([][]byte{packet})
 	if err != nil {
-		logger.Error("Failed to send handshake initiation", slog.Any("error", err))
+		logger.Warn("Failed to send handshake initiation", slog.Any("error", err))
 	}
 	peer.timersHandshakeInitiated()
 
@@ -194,23 +191,19 @@ func (peer *Peer) SendHandshakeResponse() error {
 
 	response, err := peer.transport.CreateMessageResponse(peer)
 	if err != nil {
-		logger.Error("Failed to create handshake response message", slog.Any("error", err))
+		logger.Warn("Failed to create response message", slog.Any("error", err))
 		return err
 	}
 
 	var buf [MessageResponseSize]byte
 	writer := bytes.NewBuffer(buf[:0])
-	if err := binary.Write(writer, binary.LittleEndian, response); err != nil {
-		logger.Error("Failed to write handshake response message", slog.Any("error", err))
-		return err
-	}
-
+	_ = binary.Write(writer, binary.LittleEndian, response)
 	packet := writer.Bytes()
 	peer.cookieGenerator.AddMacs(packet)
 
 	err = peer.BeginSymmetricSession()
 	if err != nil {
-		logger.Error("Failed to derive keypair", slog.Any("error", err))
+		logger.Warn("Failed to derive keypair", slog.Any("error", err))
 		return err
 	}
 
@@ -221,9 +214,11 @@ func (peer *Peer) SendHandshakeResponse() error {
 	// TODO: allocation could be avoided
 	err = peer.SendBuffers([][]byte{packet})
 	if err != nil {
-		logger.Error("Failed to send handshake response", slog.Any("error", err))
+		logger.Warn("Failed to send handshake response", slog.Any("error", err))
+		return err
 	}
-	return err
+
+	return nil
 }
 
 func (transport *Transport) SendHandshakeCookie(initiatingElem *QueueHandshakeElement) error {
@@ -234,17 +229,13 @@ func (transport *Transport) SendHandshakeCookie(initiatingElem *QueueHandshakeEl
 	sender := binary.LittleEndian.Uint32(initiatingElem.packet[4:8])
 	reply, err := transport.cookieChecker.CreateReply(initiatingElem.packet, sender, initiatingElem.endpoint.DstToBytes())
 	if err != nil {
-		logger.Error("Failed to create cookie reply", slog.Any("error", err))
+		logger.Warn("Failed to create cookie reply", slog.Any("error", err))
 		return err
 	}
 
 	var buf [MessageCookieReplySize]byte
 	writer := bytes.NewBuffer(buf[:0])
-	if err := binary.Write(writer, binary.LittleEndian, reply); err != nil {
-		logger.Error("Failed to write cookie reply", slog.Any("error", err))
-		return err
-	}
-
+	_ = binary.Write(writer, binary.LittleEndian, reply)
 	// TODO: allocation could be avoided
 	return transport.net.bind.Send([][]byte{writer.Bytes()}, initiatingElem.endpoint)
 }
@@ -254,30 +245,29 @@ func (peer *Peer) keepKeyFreshSending() error {
 	if keypair == nil {
 		return nil
 	}
-
 	nonce := keypair.sendNonce.Load()
 	if nonce > RekeyAfterMessages || (keypair.isInitiator && time.Since(keypair.created) > RekeyAfterTime) {
-		return peer.SendHandshakeInitiation(false)
+		if err := peer.SendHandshakeInitiation(false); err != nil {
+			return err
+		}
 	}
-
 	return nil
 }
 
-func (transport *Transport) RoutineReadFromSourceSink() {
+func (transport *Transport) RoutineReadFromNIC() {
 	defer func() {
-		transport.logger.Debug("Routine: Source reader - stopped")
+		transport.logger.Debug("Routine: NIC reader - stopped")
 		transport.state.stopping.Done()
 		transport.queue.encryption.wg.Done()
 	}()
 
-	transport.logger.Debug("Routine: Source reader - started")
+	transport.logger.Debug("Routine: NIC reader - started")
 
 	var (
 		batchSize   = transport.BatchSize()
 		readErr     error
 		elems       = make([]*QueueOutboundElement, batchSize)
 		bufs        = make([][]byte, batchSize)
-		peers       = make([]types.NoisePublicKey, batchSize)
 		elemsByPeer = make(map[*Peer]*QueueOutboundElementsContainer, batchSize)
 		count       int
 		sizes       = make([]int, batchSize)
@@ -300,7 +290,7 @@ func (transport *Transport) RoutineReadFromSourceSink() {
 
 	for {
 		// read packets
-		count, readErr = transport.sourceSink.Read(bufs, sizes, peers, offset)
+		count, readErr = transport.nic.nic.Read(transport.ctx, bufs, sizes, offset)
 		for i := 0; i < count; i++ {
 			if sizes[i] < 1 {
 				continue
@@ -309,11 +299,37 @@ func (transport *Transport) RoutineReadFromSourceSink() {
 			elem := elems[i]
 			elem.packet = bufs[i][offset : offset+sizes[i]]
 
-			transport.peers.RLock()
-			peer := transport.peers.keyMap[peers[i]]
-			transport.peers.RUnlock()
-			if peer == nil {
-				continue
+			// lookup peer
+			var peer *Peer
+			switch elem.packet[0] >> 4 {
+			case 4:
+				if len(elem.packet) < ipv4.HeaderLen {
+					continue
+				}
+				dst := elem.packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
+				peer = transport.allowedips.Lookup(dst)
+				if peer == nil {
+					dstAddr, _ := netip.AddrFromSlice(dst)
+					transport.logger.Warn("Received outbound IPv4 packet for unknown peer",
+						slog.String("dstAddr", dstAddr.String()))
+					continue
+				}
+
+			case 6:
+				if len(elem.packet) < ipv6.HeaderLen {
+					continue
+				}
+				dst := elem.packet[IPv6offsetDst : IPv6offsetDst+net.IPv6len]
+				peer = transport.allowedips.Lookup(dst)
+				if peer == nil {
+					dstAddr, _ := netip.AddrFromSlice(dst)
+					transport.logger.Warn("Received outbound IPv6 packet for unknown peer",
+						slog.String("dstAddr", dstAddr.String()))
+					continue
+				}
+
+			default:
+				transport.logger.Warn("Received packet with unknown IP version")
 			}
 
 			elemsForPeer, ok := elemsByPeer[peer]
@@ -347,8 +363,7 @@ func (transport *Transport) RoutineReadFromSourceSink() {
 		if readErr != nil {
 			if !transport.isClosed() {
 				if !errors.Is(readErr, os.ErrClosed) {
-					transport.logger.Error("Failed to read packet from source sink",
-						slog.Any("error", readErr))
+					transport.logger.Error("Failed to read packet from NIC", slog.Any("error", readErr))
 				}
 				go transport.Close()
 			}
@@ -384,6 +399,8 @@ top:
 
 	keypair := peer.keypairs.Current()
 	if keypair == nil || keypair.sendNonce.Load() >= RejectAfterMessages || time.Since(keypair.created) >= RejectAfterTime {
+		peer.transport.logger.Debug("Sending initial handshake or rekey")
+
 		return peer.SendHandshakeInitiation(false)
 	}
 
@@ -499,8 +516,8 @@ func (transport *Transport) RoutineEncryption(id int) {
 			binary.LittleEndian.PutUint32(fieldReceiver, elem.keypair.remoteIndex)
 			binary.LittleEndian.PutUint64(fieldNonce, elem.nonce)
 
-			// pad content to multiple of 16 bytes
-			paddingSize := calculatePaddingSize(len(elem.packet), transport.sourceSink.MTU())
+			// pad content to multiple of 16
+			paddingSize := calculatePaddingSize(len(elem.packet), int(transport.nic.mtu.Load()))
 			elem.packet = append(elem.packet, paddingZeros[:paddingSize]...)
 
 			// encrypt content and release to consumer
@@ -572,7 +589,7 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 		if err != nil {
 			var errGSO conn.ErrUDPGSODisabled
 			if errors.As(err, &errGSO) {
-				logger.Warn("Failed to send data packets, retrying", slog.Any("error", err))
+				logger.Debug("Failed to send data packets, retrying", slog.Any("error", err))
 				err = errGSO.RetryErr
 			}
 		}
@@ -582,7 +599,7 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 		}
 
 		if err := peer.keepKeyFreshSending(); err != nil {
-			logger.Error("Failed to keep key fresh", slog.Any("error", err))
+			logger.Warn("Failed to keep key fresh", slog.Any("error", err))
 		}
 	}
 }

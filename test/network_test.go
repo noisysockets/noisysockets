@@ -13,23 +13,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html/template"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"text/template"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/neilotoole/slogt"
+	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets"
 	"github.com/noisysockets/noisysockets/config"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
-	"github.com/noisysockets/noisysockets/network"
 	"github.com/noisysockets/noisysockets/types"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tnet "github.com/testcontainers/testcontainers-go/network"
@@ -204,12 +203,12 @@ func TestNetwork(t *testing.T) {
 			require.NoError(t, resp.Body.Close())
 		})
 
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		assert.Equal(t, "Hello, world!", string(body))
+		require.Equal(t, "Hello, world!", string(body))
 	})
 
 	t.Run("UDP", func(t *testing.T) {
@@ -225,7 +224,7 @@ func TestNetwork(t *testing.T) {
 		n, err := conn.Read(buf)
 		require.NoError(t, err)
 
-		assert.Equal(t, "Hello, world!", string(buf[:n]))
+		require.Equal(t, "Hello, world!", string(buf[:n]))
 	})
 }
 
@@ -398,12 +397,12 @@ func TestAddAndRemovePeer(t *testing.T) {
 		require.NoError(t, resp.Body.Close())
 	})
 
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	t.Log("Adding server 2 and making request")
 
 	// Add server 2.
-	err = net.(*noisysockets.NoisySocketsNetwork).AddPeer(latestconfig.PeerConfig{
+	err = net.AddPeer(latestconfig.PeerConfig{
 		Name:      "server2",
 		PublicKey: server2PrivateKey.Public().String(),
 		Endpoint:  "localhost:12346",
@@ -418,16 +417,22 @@ func TestAddAndRemovePeer(t *testing.T) {
 		require.NoError(t, resp.Body.Close())
 	})
 
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	t.Log("Removing server 1 and making request")
 
-	// Remove server 1
-	err = net.(*noisysockets.NoisySocketsNetwork).RemovePeer(server2PrivateKey.Public())
+	err = net.RemovePeer(server1PrivateKey.Public())
 	require.NoError(t, err)
 
-	_, err = client.Get("http://server2")
-	assert.Error(t, err)
+	// We expect this to fail so keep a short timeout.
+	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
+	t.Cleanup(cancel)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://server1", nil)
+	require.NoError(t, err)
+
+	_, err = client.Do(req)
+	require.Error(t, err)
 }
 
 func TestWireGuardCompatibility(t *testing.T) {

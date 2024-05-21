@@ -32,9 +32,11 @@
 package transport
 
 import (
+	"container/list"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -81,6 +83,7 @@ type Peer struct {
 	}
 
 	cookieGenerator   CookieGenerator
+	trieEntries       list.List
 	keepAliveInterval atomic.Uint32
 }
 
@@ -166,7 +169,7 @@ func (peer *Peer) SendBuffers(buffers [][]byte) error {
 }
 
 func (peer *Peer) String() string {
-	return fmt.Sprintf("peer(%s)", peer.handshake.remoteStatic.DisplayString())
+	return fmt.Sprintf("peer(%s)", peer.pk.DisplayString())
 }
 
 func (peer *Peer) Start() {
@@ -289,4 +292,8 @@ func (peer *Peer) SetEndpoint(endpoint conn.Endpoint) {
 
 func (peer *Peer) SetKeepAliveInterval(interval time.Duration) {
 	peer.keepAliveInterval.Store(uint32(interval.Seconds()))
+}
+
+func (peer *Peer) AddAllowedIP(prefix netip.Prefix) {
+	peer.transport.allowedips.Insert(prefix, peer)
 }

@@ -32,32 +32,17 @@
 package transport
 
 import (
-	"io"
-
-	"github.com/noisysockets/noisysockets/types"
+	"net"
 )
 
-type SourceSink interface {
-	io.Closer
+const (
+	IPv4offsetTotalLength = 2
+	IPv4offsetSrc         = 12
+	IPv4offsetDst         = IPv4offsetSrc + net.IPv4len
+)
 
-	// Read one or more packets from the Transport (without any additional headers).
-	// On a successful read it returns the number of packets read, and sets
-	// packet lengths within the sizes slice. len(sizes) must be >= len(bufs).
-	// A nonzero offset can be used to instruct the Transport on where to begin
-	// reading into each element of the bufs slice.
-	Read(bufs [][]byte, sizes []int, destinations []types.NoisePublicKey, offset int) (int, error)
-
-	// Write one or more packets to the transport (without any additional headers).
-	// On a successful write it returns the number of packets written. A nonzero
-	// offset can be used to instruct the Transport on where to begin writing from
-	// each packet contained within the bufs slice.
-	Write(bufs [][]byte, sources []types.NoisePublicKey, offset int) (int, error)
-
-	// MTU returns the maximum transmission unit of the source/sink.
-	MTU() int
-
-	// BatchSize returns the preferred/max number of packets that can be read or
-	// written in a single read/write call. BatchSize must not change over the
-	// lifetime of a Transport.
-	BatchSize() int
-}
+const (
+	IPv6offsetPayloadLength = 4
+	IPv6offsetSrc           = 8
+	IPv6offsetDst           = IPv6offsetSrc + net.IPv6len
+)

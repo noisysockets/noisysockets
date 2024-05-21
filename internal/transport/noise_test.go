@@ -33,6 +33,7 @@ package transport
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"net"
 	"testing"
@@ -67,8 +68,9 @@ func randTransport(t *testing.T) *Transport {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ctx := context.Background()
 	logger := slogt.New(t)
-	transport := NewTransport(logger, &discardingSink{}, conn.NewStdNetBind())
+	transport := NewTransport(ctx, logger, &discardingInterface{}, conn.NewStdNetBind())
 	transport.SetPrivateKey(sk)
 	return transport
 }
@@ -212,17 +214,17 @@ func TestNoiseHandshake(t *testing.T) {
 	}()
 }
 
-type discardingSink struct {
+type discardingInterface struct {
 	closed bool
 }
 
-func (ss *discardingSink) Close() error {
-	ss.closed = true
+func (d *discardingInterface) Close() error {
+	d.closed = true
 	return nil
 }
 
-func (ss *discardingSink) Read(bufs [][]byte, sizes []int, destinations []types.NoisePublicKey, offset int) (int, error) {
-	if ss.closed {
+func (d *discardingInterface) Read(ctx context.Context, bufs [][]byte, sizes []int, offset int) (int, error) {
+	if d.closed {
 		return 0, net.ErrClosed
 	}
 
@@ -231,14 +233,18 @@ func (ss *discardingSink) Read(bufs [][]byte, sizes []int, destinations []types.
 	return 0, nil
 }
 
-func (discardingSink) Write(bufs [][]byte, sources []types.NoisePublicKey, offset int) (int, error) {
+func (discardingInterface) Write(ctx context.Context, bufs [][]byte, sizes []int, offset int) (int, error) {
 	return 0, nil
 }
 
-func (discardingSink) MTU() int {
+func (discardingInterface) Name() string {
+	return "discard0"
+}
+
+func (discardingInterface) MTU() int {
 	return 1420
 }
 
-func (discardingSink) BatchSize() int {
+func (discardingInterface) BatchSize() int {
 	return 1
 }

@@ -11,6 +11,7 @@ package v1alpha2
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/noisysockets/noisysockets/config/types"
 )
@@ -38,11 +39,40 @@ type Config struct {
 	Peers []PeerConfig `yaml:"peers,omitempty" mapstructure:"peers,omitempty"`
 }
 
+type DNSProtocol string
+
+const (
+	DNSProtocolAuto DNSProtocol = ""
+	// DNSProtocolUDP is the UDP DNS protocol.
+	DNSProtocolUDP DNSProtocol = "udp"
+	// DNSProtocolTCP is the TCP DNS protocol.
+	DNSProtocolTCP DNSProtocol = "tcp"
+	// DNSProtocolTLS is the DNS-over-TLS protocol.
+	DNSProtocolTLS DNSProtocol = "tls"
+)
+
+func (p *DNSProtocol) UnmarshalYAML(unmarshal func(any) error) error {
+	var str string
+	if err := unmarshal(&str); err != nil {
+		return err
+	}
+	switch DNSProtocol(strings.ToLower(str)) {
+	case DNSProtocolAuto, DNSProtocolUDP, DNSProtocolTCP, DNSProtocolTLS:
+		*p = DNSProtocol(str)
+		return nil
+	default:
+		return fmt.Errorf("unknown DNS protocol: %s", str)
+	}
+}
+
 // DNSConfig is the configuration for DNS resolution.
 type DNSConfig struct {
 	// Domain is the optional default search domain to use for this network.
 	// If not specified, a default value of "my.nzzy.net." will be used.
 	Domain string `yaml:"domain,omitempty" mapstructure:"domain,omitempty"`
+	// Protocol is the DNS protocol to use for resolution.
+	// If not specified, plain UDP will be used.
+	Protocol DNSProtocol `yaml:"protocol,omitempty" mapstructure:"protocol,omitempty"`
 	// Nameservers is a list of DNS servers to use for DNS resolution.
 	Nameservers []string `yaml:"nameservers,omitempty" mapstructure:"nameservers,omitempty"`
 }
