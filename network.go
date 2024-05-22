@@ -36,7 +36,7 @@ var (
 
 // NoisySocketsNetwork is a wrapper around a userspace WireGuard peer.
 type NoisySocketsNetwork struct {
-	network.Network
+	*network.UserspaceNetwork
 	logger            *slog.Logger
 	closePipe         func() error
 	transport         *transport.Transport
@@ -152,7 +152,7 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 	}
 
 	ctx := context.Background()
-	net.Network, err = network.Userspace(ctx, logger, nicA, netConf)
+	net.UserspaceNetwork, err = network.Userspace(ctx, logger, nicA, netConf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create userspace network: %w", err)
 	}
@@ -194,7 +194,7 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 
 // Close closes the network.
 func (net *NoisySocketsNetwork) Close() error {
-	if err := net.Network.Close(); err != nil {
+	if err := net.UserspaceNetwork.Close(); err != nil {
 		return err
 	}
 
