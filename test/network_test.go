@@ -60,11 +60,11 @@ func TestNetwork(t *testing.T) {
 			Name:       "tcp-server",
 			ListenPort: 12345,
 			PrivateKey: tcpServerPrivateKey.String(),
-			IPs:        []string{"10.7.0.2"},
+			IPs:        []string{"100.64.0.2"},
 			Peers: []latestconfig.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.Public().String(),
-					IPs:       []string{"10.7.0.1"},
+					IPs:       []string{"100.64.0.1"},
 				},
 			},
 		}
@@ -111,11 +111,11 @@ func TestNetwork(t *testing.T) {
 			Name:       "udp-server",
 			ListenPort: 12346,
 			PrivateKey: udpServerPrivateKey.String(),
-			IPs:        []string{"10.7.0.3"},
+			IPs:        []string{"100.64.0.3"},
 			Peers: []latestconfig.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.Public().String(),
-					IPs:       []string{"10.7.0.1"},
+					IPs:       []string{"100.64.0.1"},
 				},
 			},
 		}
@@ -164,19 +164,19 @@ func TestNetwork(t *testing.T) {
 		Name:       "client",
 		ListenPort: 12347,
 		PrivateKey: clientPrivateKey.String(),
-		IPs:        []string{"10.7.0.1"},
+		IPs:        []string{"100.64.0.1"},
 		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "tcp-server",
 				PublicKey: tcpServerPrivateKey.Public().String(),
 				Endpoint:  "localhost:12345",
-				IPs:       []string{"10.7.0.2"},
+				IPs:       []string{"100.64.0.2"},
 			},
 			{
 				Name:      "udp-server",
 				PublicKey: udpServerPrivateKey.Public().String(),
 				Endpoint:  "localhost:12346",
-				IPs:       []string{"10.7.0.3"},
+				IPs:       []string{"100.64.0.3"},
 			}},
 	}
 
@@ -254,11 +254,11 @@ func TestAddAndRemovePeer(t *testing.T) {
 			Name:       "server1",
 			ListenPort: 12345,
 			PrivateKey: server1PrivateKey.String(),
-			IPs:        []string{"10.7.0.2"},
+			IPs:        []string{"100.64.0.2"},
 			Peers: []latestconfig.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.Public().String(),
-					IPs:       []string{"10.7.0.1"},
+					IPs:       []string{"100.64.0.1"},
 				},
 			},
 		}
@@ -308,11 +308,11 @@ func TestAddAndRemovePeer(t *testing.T) {
 			Name:       "server2",
 			ListenPort: 12346,
 			PrivateKey: server2PrivateKey.String(),
-			IPs:        []string{"10.7.0.3"},
+			IPs:        []string{"100.64.0.3"},
 			Peers: []latestconfig.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.Public().String(),
-					IPs:       []string{"10.7.0.1"},
+					IPs:       []string{"100.64.0.1"},
 				},
 			},
 		}
@@ -361,13 +361,13 @@ func TestAddAndRemovePeer(t *testing.T) {
 		Name:       "client",
 		ListenPort: 12347,
 		PrivateKey: clientPrivateKey.String(),
-		IPs:        []string{"10.7.0.1"},
+		IPs:        []string{"100.64.0.1"},
 		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "server1",
 				PublicKey: server1PrivateKey.Public().String(),
 				Endpoint:  "localhost:12345",
-				IPs:       []string{"10.7.0.2"},
+				IPs:       []string{"100.64.0.2"},
 			},
 		},
 	}
@@ -406,7 +406,7 @@ func TestAddAndRemovePeer(t *testing.T) {
 		Name:      "server2",
 		PublicKey: server2PrivateKey.Public().String(),
 		Endpoint:  "localhost:12346",
-		IPs:       []string{"10.7.0.3"},
+		IPs:       []string{"100.64.0.3"},
 	})
 	require.NoError(t, err)
 

@@ -40,13 +40,13 @@ func main() {
 	serverConf := &latestconfig.Config{
 		Name:       "server",
 		PrivateKey: serverPrivateKey.String(),
-		IPs:        []string{"10.0.0.1"},
+		IPs:        []string{"100.64.0.1"},
 		ListenPort: 51820,
 		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "client1",
 				PublicKey: clientPrivateKey.Public().String(),
-				IPs:       []string{"10.0.0.2"},
+				IPs:       []string{"100.64.0.2"},
 			},
 		},
 	}
@@ -62,12 +62,12 @@ func main() {
 	clientNet, err := noisysockets.OpenNetwork(logger, &latestconfig.Config{
 		Name:       "client1",
 		PrivateKey: clientPrivateKey.String(),
-		IPs:        []string{"10.0.0.2"},
+		IPs:        []string{"100.64.0.2"},
 		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "server",
 				PublicKey: serverPrivateKey.Public().String(),
-				IPs:       []string{"10.0.0.1"},
+				IPs:       []string{"100.64.0.1"},
 				Endpoint:  net.JoinHostPort("localhost", strconv.Itoa(int(serverConf.ListenPort))),
 			},
 		},

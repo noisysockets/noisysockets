@@ -6,6 +6,9 @@ tidy:
   LOCALLY
   RUN go mod tidy
   RUN go fmt ./...
+  RUN for dir in $(find . -name 'go.mod'); do \
+      (cd "${dir%/go.mod}" && go mod tidy); \
+    done
 
 lint:
   FROM golangci/golangci-lint:v1.57.2

@@ -6,7 +6,7 @@ replace github.com/noisysockets/noisysockets => ../
 
 require (
 	github.com/docker/docker v26.0.2+incompatible
-	github.com/noisysockets/network v0.5.1
+	github.com/noisysockets/network v0.5.2
 	github.com/noisysockets/noisysockets v0.0.0-00010101000000-000000000000
 	github.com/testcontainers/testcontainers-go v0.30.0
 )
@@ -46,7 +46,7 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/noisysockets/go-fqdn v1.1.0 // indirect
 	github.com/noisysockets/netstack v0.6.0 // indirect
-	github.com/noisysockets/resolver v0.4.0 // indirect
+	github.com/noisysockets/resolver v0.4.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

@@ -41,13 +41,13 @@ func Start(ctx context.Context, gwPrivateKey types.NoisePrivateKey, clientPublic
 	[Interface]
 	PrivateKey = ` + gwPrivateKey.String() + `
 	ListenPort = 51820
-	Address = 10.0.0.1/32
+	Address = 100.64.0.1/32
 	PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 	PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
 
 	[Peer]
 	PublicKey = ` + clientPublicKey.String() + `
-	AllowedIPs = 10.0.0.2/32
+	AllowedIPs = 100.64.0.2/32
 `
 
 	gwConfigDir, err = os.MkdirTemp("", "wg-")

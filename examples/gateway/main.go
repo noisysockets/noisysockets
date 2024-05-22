@@ -50,11 +50,11 @@ func main() {
 	net, err := noisysockets.OpenNetwork(logger, &latestconfig.Config{
 		PrivateKey: clientPrivateKey.String(),
 		IPs: []string{
-			"10.0.0.2",
+			"100.64.0.2",
 		},
 		DNS: &latestconfig.DNSConfig{
 			Protocol: latestconfig.DNSProtocolTCP,
-			Servers:  []string{"10.0.0.1"},
+			Servers:  []string{"100.64.0.1"},
 		},
 		Routes: []latestconfig.RouteConfig{
 			{
@@ -71,7 +71,7 @@ func main() {
 				// Normally we wouldn't need to give the gateway peer any IPs, but
 				// since its doing dual duty as the DNS server, we need to give it
 				// a routable IP.
-				IPs: []string{"10.0.0.1"},
+				IPs: []string{"100.64.0.1"},
 			},
 		},
 	})

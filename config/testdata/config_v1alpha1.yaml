@@ -3,15 +3,15 @@ kind: Config
 listenPort: 12346
 privateKey: SFN1gntnAutVFefwrPDlM1W2/LGWaRSn2hq06TvL2GY=
 ips:
-- 10.7.0.2
+- 100.64.0.2
 dnsServers:
-- 10.7.0.1
+- 100.64.0.1
 peers:
 - name: server
   publicKey: 6cvvZyj+EVL4DHjUKeVF7EUBfgR2mJO4php2Gdv9FVw=
   endpoint: 127.0.0.1:12345
   ips:
-  - 10.7.0.1
+  - 100.64.0.1
 - name: gateway
   publicKey: aVHVSvdp1s9Cmw1r7XJgBSjXsSMpXdsskiuwPVYUdCk=
   endpoint: 127.0.0.1:12346
