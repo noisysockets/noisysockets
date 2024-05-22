@@ -84,6 +84,11 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 
 	peerNamesResolver := newPeerResolver(domain)
 
+	// Add our own addresses to the resolver.
+	if conf.Name != "" {
+		peerNamesResolver.addPeer(conf.Name, addrs...)
+	}
+
 	netConf := &network.UserspaceNetworkConfig{
 		Hostname:  conf.Name,
 		Addresses: addrPrefixes,
