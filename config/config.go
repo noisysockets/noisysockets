@@ -120,7 +120,7 @@ func migrateV1Alpha1ToV1Alpha2(conf *v1alpha1.Config) (*latestconfig.Config, err
 
 	if conf.DNSServers != nil {
 		migratedConf.DNS = &latestconfig.DNSConfig{
-			Nameservers: conf.DNSServers,
+			Servers: conf.DNSServers,
 		}
 	}
 

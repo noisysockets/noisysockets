@@ -73,8 +73,8 @@ type DNSConfig struct {
 	// Protocol is the DNS protocol to use for resolution.
 	// If not specified, plain UDP will be used.
 	Protocol DNSProtocol `yaml:"protocol,omitempty" mapstructure:"protocol,omitempty"`
-	// Nameservers is a list of DNS servers to use for DNS resolution.
-	Nameservers []string `yaml:"nameservers,omitempty" mapstructure:"nameservers,omitempty"`
+	// Servers is a list of DNS servers to use for DNS resolution.
+	Servers []string `yaml:"servers,omitempty" mapstructure:"servers,omitempty"`
 }
 
 // RouteConfig is the configuration for a route in the routing table.

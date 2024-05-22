@@ -71,7 +71,7 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 
 	var nameservers []netip.AddrPort
 	if conf.DNS != nil {
-		nameservers, err = util.ParseAddrPortList(conf.DNS.Nameservers)
+		nameservers, err = util.ParseAddrPortList(conf.DNS.Servers)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse DNS nameservers: %w", err)
 		}
@@ -91,6 +91,7 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 
 	netConf := &network.UserspaceNetworkConfig{
 		Hostname:  conf.Name,
+		Domain:    domain,
 		Addresses: addrPrefixes,
 		ResolverFactory: func(dialContext network.DialContextFunc) resolver.Resolver {
 			peerNamesResolver.dialContext = dialContext

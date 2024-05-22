@@ -64,7 +64,7 @@ func FromINI(r io.Reader) (conf *latestconfig.Config, err error) {
 		}
 
 		for _, dns := range strings.Split(key.String(), ",") {
-			conf.DNS.Nameservers = append(conf.DNS.Nameservers, strings.TrimSpace(dns))
+			conf.DNS.Servers = append(conf.DNS.Servers, strings.TrimSpace(dns))
 		}
 	}
 
@@ -171,8 +171,8 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 		return fmt.Errorf("failed to create key: %w", err)
 	}
 
-	if conf.DNS != nil && len(conf.DNS.Nameservers) > 0 {
-		if _, err := ifaceSection.NewKey("DNS", strings.Join(conf.DNS.Nameservers, ",")); err != nil {
+	if conf.DNS != nil && len(conf.DNS.Servers) > 0 {
+		if _, err := ifaceSection.NewKey("DNS", strings.Join(conf.DNS.Servers, ",")); err != nil {
 			return fmt.Errorf("failed to create key: %w", err)
 		}
 	}

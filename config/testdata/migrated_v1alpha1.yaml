@@ -8,7 +8,7 @@ routes:
 - destination: 192.168.0.0/24
   via: gateway
 dns:
-  nameservers:
+  servers:
   - 10.7.0.1
 peers:
 - name: server

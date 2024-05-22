@@ -8,7 +8,7 @@ require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
 	github.com/cheggaaa/pb/v3 v3.1.5
 	github.com/hashicorp/go-multierror v1.1.1
-	github.com/noisysockets/network v0.4.2
+	github.com/noisysockets/network v0.5.1
 	github.com/noisysockets/noisysockets v0.0.0-00010101000000-000000000000
 	github.com/rogpeppe/go-internal v1.12.0
 	github.com/urfave/cli/v2 v2.27.2
@@ -28,6 +28,7 @@ require (
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/miekg/dns v1.1.59 // indirect
+	github.com/noisysockets/go-fqdn v1.1.0 // indirect
 	github.com/noisysockets/netstack v0.6.0 // indirect
 	github.com/noisysockets/resolver v0.4.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect

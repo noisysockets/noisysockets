@@ -53,8 +53,8 @@ func main() {
 			"10.0.0.2",
 		},
 		DNS: &latestconfig.DNSConfig{
-			Protocol:    latestconfig.DNSProtocolTCP,
-			Nameservers: []string{"10.0.0.1"},
+			Protocol: latestconfig.DNSProtocolTCP,
+			Servers:  []string{"10.0.0.1"},
 		},
 		Routes: []latestconfig.RouteConfig{
 			{
