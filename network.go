@@ -38,7 +38,6 @@ var (
 type NoisySocketsNetwork struct {
 	*network.UserspaceNetwork
 	logger            *slog.Logger
-	closePipe         func() error
 	transport         *transport.Transport
 	peersByName       map[string]types.NoisePublicKey
 	nameForPeer       map[types.NoisePublicKey]string
@@ -143,13 +142,12 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 		peerNamesResolver: peerNamesResolver,
 	}
 
-	nicA, nicB := network.Pipe(transport.DefaultMTU, conn.IdealBatchSize)
-	net.closePipe = func() error {
-		if err := nicA.Close(); err != nil {
-			return err
-		}
-		return nicB.Close()
+	mtu := conf.MTU
+	if mtu == 0 {
+		mtu = transport.DefaultMTU
 	}
+
+	nicA, nicB := network.Pipe(mtu, conn.IdealBatchSize)
 
 	ctx := context.Background()
 	net.UserspaceNetwork, err = network.Userspace(ctx, logger, nicA, netConf)
@@ -202,22 +200,15 @@ func (net *NoisySocketsNetwork) Close() error {
 
 	net.logger.Debug("Closing transport")
 
+	// The pipe will be closed internally by the transport.
 	if err := net.transport.Close(); err != nil {
 		return err
 	}
 
-	net.logger.Debug("Closing network pipe")
-
-	if err := net.closePipe(); err != nil {
-		return err
-	}
-
-	net.logger.Debug("Network closed")
-
 	return nil
 }
 
-// ListenPort returns the port the network is listening on.
+// ListenPort returns the port that wireguard is listening on.
 func (net *NoisySocketsNetwork) ListenPort() uint16 {
 	return net.transport.GetPort()
 }
@@ -274,7 +265,7 @@ func (net *NoisySocketsNetwork) AddPeer(peerConf latestconfig.PeerConfig) error 
 			return fmt.Errorf("failed to parse peer port: %w", err)
 		}
 
-		// TODO: try all resolved addresses until one works.
+		// TODO: try all resolved addresses until one works?
 		peer.SetEndpoint(&conn.StdNetEndpoint{
 			AddrPort: netip.AddrPortFrom(netip.MustParseAddr(peerEndpointAddrs[0]), uint16(peerEndpointPort)),
 		})

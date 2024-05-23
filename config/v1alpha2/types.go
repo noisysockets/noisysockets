@@ -29,6 +29,11 @@ type Config struct {
 	ListenPort uint16 `yaml:"listenPort,omitempty" mapstructure:"listenPort,omitempty"`
 	// PrivateKey is the private key for this peer.
 	PrivateKey string `yaml:"privateKey" mapstructure:"privateKey"`
+	// MTU is the maximum transmission unit size for this network.
+	// If not specified, a conservative default value of 1420 will be used.
+	// This is the protocol MTU, not the media MTU, so account for 32 bytes
+	// of overhead per packet.
+	MTU int `yaml:"mtu,omitempty" mapstructure:"mtu,omitempty"`
 	// IPs is a list of IP addresses assigned to this peer.
 	IPs []string `yaml:"ips,omitempty" mapstructure:"ips,omitempty"`
 	// DNS is the DNS configuration for this peer.

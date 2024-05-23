@@ -51,6 +51,11 @@ func FromINI(r io.Reader) (conf *latestconfig.Config, err error) {
 		conf.ListenPort = uint16(key.MustInt(0))
 	}
 
+	key, err = ifaceSection.GetKey("MTU")
+	if err == nil {
+		conf.MTU = key.MustInt(0)
+	}
+
 	key, err = ifaceSection.GetKey("PrivateKey")
 	if err != nil {
 		return nil, fmt.Errorf("missing private key: %w", err)
@@ -165,6 +170,12 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 
 	if _, err := ifaceSection.NewKey("ListenPort", fmt.Sprintf("%d", listenPort)); err != nil {
 		return fmt.Errorf("failed to create key: %w", err)
+	}
+
+	if conf.MTU != 0 {
+		if _, err := ifaceSection.NewKey("MTU", fmt.Sprintf("%d", conf.MTU)); err != nil {
+			return fmt.Errorf("failed to create key: %w", err)
+		}
 	}
 
 	if _, err := ifaceSection.NewKey("PrivateKey", conf.PrivateKey); err != nil {
