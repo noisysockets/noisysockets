@@ -55,8 +55,8 @@ github.com/noisysockets/go-fqdn v1.1.0 h1:UcBIA0ul3hod8036gExMipIjLhWuvE7Fk3PVct
 github.com/noisysockets/go-fqdn v1.1.0/go.mod h1:MyLHpBO/g783D5FiMUfGZe4Tzs+8DK0rW83wqOcitas=
 github.com/noisysockets/netstack v0.6.0 h1:KNXPSEXLbB6ulUEvOsMiNSBTu93l40nO/X5utXlUTS4=
 github.com/noisysockets/netstack v0.6.0/go.mod h1:tt7ze5obpFYDX9aIygoEb+6p5q1FNbIfg2KcFiX65bc=
-github.com/noisysockets/network v0.6.3 h1:Yf0wrzeITuwP2M57lFpPdFc04SNKIuIJL6rJcEszCP0=
-github.com/noisysockets/network v0.6.3/go.mod h1:NfuhIv4kzw6+cO6PHhBiNUSBL8Ep+4qFSutJmg4CgIw=
+github.com/noisysockets/network v0.8.2 h1:/gjOMiShb11mjCT1NWFvUEy2cLurdBw3uKGbV+EqyKI=
+github.com/noisysockets/network v0.8.2/go.mod h1:NfuhIv4kzw6+cO6PHhBiNUSBL8Ep+4qFSutJmg4CgIw=
 github.com/noisysockets/resolver v0.4.1 h1:w8o1VA/ieM0MnUAENLDi3FHosmdOtBKmciGsfbww7dQ=
 github.com/noisysockets/resolver v0.4.1/go.mod h1:akWUhw8gutJR8pPhHKiWMLy5XPovCqPiYkOs2VQuBzk=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

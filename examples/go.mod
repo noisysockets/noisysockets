@@ -5,8 +5,7 @@ go 1.22.0
 replace github.com/noisysockets/noisysockets => ../
 
 require (
-	github.com/docker/docker v26.0.2+incompatible
-	github.com/noisysockets/network v0.6.3
+	github.com/noisysockets/network v0.8.2
 	github.com/noisysockets/noisysockets v0.0.0-00010101000000-000000000000
 	github.com/testcontainers/testcontainers-go v0.30.0
 )
@@ -22,6 +21,7 @@ require (
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/cpuguy83/dockercfg v0.3.1 // indirect
 	github.com/distribution/reference v0.5.0 // indirect
+	github.com/docker/docker v26.0.2+incompatible // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect

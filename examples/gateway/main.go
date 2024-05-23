@@ -12,7 +12,7 @@ import (
 
 	"github.com/noisysockets/noisysockets"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
-	"github.com/noisysockets/noisysockets/examples/util/gateway"
+	"github.com/noisysockets/noisysockets/examples/util/router"
 	"github.com/noisysockets/noisysockets/types"
 )
 
@@ -20,14 +20,14 @@ func main() {
 	logger := slog.Default()
 
 	// Generate keypair for the gateway peer.
-	gatewayPrivateKey, err := types.NewPrivateKey()
+	routerPrivateKey, err := types.NewPrivateKey()
 	if err != nil {
 		logger.Error("Failed to generate gateway private key", slog.Any("error", err))
 		os.Exit(1)
 	}
 
 	// Get the public key for the gateway peer.
-	gatewayPublicKey := gatewayPrivateKey.Public()
+	routerPublicKey := routerPrivateKey.Public()
 
 	// Generate keypair for our client peer.
 	clientPrivateKey, err := types.NewPrivateKey()
@@ -39,12 +39,12 @@ func main() {
 	// Usually this would be a VPN server running on a remote host. But for the
 	// sake of this example, we'll spin up a local container running WireGuard.
 	ctx := context.Background()
-	gatewayHostPort, stopGateway, err := gateway.Start(ctx, gatewayPrivateKey, clientPrivateKey.Public())
+	routerEndpoint, stopRouter, err := router.Start(ctx, routerPrivateKey, clientPrivateKey.Public())
 	if err != nil {
-		logger.Error("Failed to start wireguard gateway", slog.Any("error", err))
+		logger.Error("Failed to start wireguard router", slog.Any("error", err))
 		os.Exit(1)
 	}
-	defer stopGateway()
+	defer stopRouter()
 
 	// Create a network for our "client" peer.
 	net, err := noisysockets.OpenNetwork(logger, &latestconfig.Config{
@@ -66,8 +66,8 @@ func main() {
 		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "gateway",
-				PublicKey: gatewayPublicKey.String(),
-				Endpoint:  gatewayHostPort,
+				PublicKey: routerPublicKey.String(),
+				Endpoint:  routerEndpoint,
 				// Normally we wouldn't need to give the gateway peer any IPs, but
 				// since its doing dual duty as the DNS server, we need to give it
 				// a routable IP.
