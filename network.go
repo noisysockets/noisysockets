@@ -194,15 +194,32 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 
 // Close closes the network.
 func (net *NoisySocketsNetwork) Close() error {
+	net.logger.Debug("Closing network")
+
 	if err := net.UserspaceNetwork.Close(); err != nil {
 		return err
 	}
+
+	net.logger.Debug("Closing transport")
 
 	if err := net.transport.Close(); err != nil {
 		return err
 	}
 
-	return net.closePipe()
+	net.logger.Debug("Closing network pipe")
+
+	if err := net.closePipe(); err != nil {
+		return err
+	}
+
+	net.logger.Debug("Network closed")
+
+	return nil
+}
+
+// ListenPort returns the port the network is listening on.
+func (net *NoisySocketsNetwork) ListenPort() uint16 {
+	return net.transport.GetPort()
 }
 
 // AddPeer adds a wireguard peer to the network.
@@ -215,7 +232,8 @@ func (net *NoisySocketsNetwork) AddPeer(peerConf latestconfig.PeerConfig) error 
 	net.logger.Debug("Adding peer",
 		slog.String("name", peerConf.Name),
 		slog.String("peer", publicKey.DisplayString()),
-		slog.String("ips", strings.Join(peerConf.IPs, ",")))
+		slog.String("ips", strings.Join(peerConf.IPs, ",")),
+		slog.String("endpoint", peerConf.Endpoint))
 
 	peer, err := net.transport.NewPeer(publicKey)
 	if err != nil {

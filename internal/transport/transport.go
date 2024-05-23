@@ -548,3 +548,11 @@ func (transport *Transport) UpdatePort(port uint16) error {
 
 	return nil
 }
+
+func (transport *Transport) GetPort() uint16 {
+	transport.net.RLock()
+	port := transport.net.port
+	transport.net.RUnlock()
+
+	return port
+}

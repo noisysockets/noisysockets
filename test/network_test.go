@@ -13,18 +13,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
+	stdnet "net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
-	"text/template"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/neilotoole/slogt"
-	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets"
 	"github.com/noisysockets/noisysockets/config"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
@@ -55,10 +56,13 @@ func TestNetwork(t *testing.T) {
 		time.Sleep(time.Second)
 	})
 
+	var tcpServerPort, udpServerPort uint16
+	var portWg sync.WaitGroup
+	portWg.Add(2)
+
 	go func() {
 		conf := latestconfig.Config{
 			Name:       "tcp-server",
-			ListenPort: 12345,
 			PrivateKey: tcpServerPrivateKey.String(),
 			IPs:        []string{"100.64.0.2"},
 			Peers: []latestconfig.PeerConfig{
@@ -75,6 +79,9 @@ func TestNetwork(t *testing.T) {
 			return
 		}
 		defer net.Close()
+
+		tcpServerPort = net.ListenPort()
+		portWg.Done()
 
 		var mux http.ServeMux
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +116,6 @@ func TestNetwork(t *testing.T) {
 	go func() {
 		conf := latestconfig.Config{
 			Name:       "udp-server",
-			ListenPort: 12346,
 			PrivateKey: udpServerPrivateKey.String(),
 			IPs:        []string{"100.64.0.3"},
 			Peers: []latestconfig.PeerConfig{
@@ -126,6 +132,9 @@ func TestNetwork(t *testing.T) {
 			return
 		}
 		defer net.Close()
+
+		udpServerPort = net.ListenPort()
+		portWg.Done()
 
 		// A little UDP echo server.
 		udpConn, err := net.ListenPacket("udp", "0.0.0.0:10000")
@@ -160,22 +169,23 @@ func TestNetwork(t *testing.T) {
 		_ = udpConn.Close()
 	}()
 
+	portWg.Wait()
+
 	conf := latestconfig.Config{
 		Name:       "client",
-		ListenPort: 12347,
 		PrivateKey: clientPrivateKey.String(),
 		IPs:        []string{"100.64.0.1"},
 		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "tcp-server",
 				PublicKey: tcpServerPrivateKey.Public().String(),
-				Endpoint:  "localhost:12345",
+				Endpoint:  stdnet.JoinHostPort("localhost", fmt.Sprint(tcpServerPort)),
 				IPs:       []string{"100.64.0.2"},
 			},
 			{
 				Name:      "udp-server",
 				PublicKey: udpServerPrivateKey.Public().String(),
-				Endpoint:  "localhost:12346",
+				Endpoint:  stdnet.JoinHostPort("localhost", fmt.Sprint(udpServerPort)),
 				IPs:       []string{"100.64.0.3"},
 			}},
 	}
@@ -248,11 +258,13 @@ func TestAddAndRemovePeer(t *testing.T) {
 		time.Sleep(time.Second)
 	})
 
-	var server1Net, server2Net network.Network
+	var server1Port, server2Port uint16
+	var portWg sync.WaitGroup
+	portWg.Add(2)
+
 	go func() {
 		conf := latestconfig.Config{
 			Name:       "server1",
-			ListenPort: 12345,
 			PrivateKey: server1PrivateKey.String(),
 			IPs:        []string{"100.64.0.2"},
 			Peers: []latestconfig.PeerConfig{
@@ -263,13 +275,15 @@ func TestAddAndRemovePeer(t *testing.T) {
 			},
 		}
 
-		var err error
-		server1Net, err = noisysockets.OpenNetwork(logger, &conf)
+		net, err := noisysockets.OpenNetwork(logger, &conf)
 		if err != nil {
 			logger.Error("Failed to create server network", "error", err)
 			return
 		}
-		defer server1Net.Close()
+		defer net.Close()
+
+		server1Port = net.ListenPort()
+		portWg.Done()
 
 		var mux http.ServeMux
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -283,7 +297,7 @@ func TestAddAndRemovePeer(t *testing.T) {
 
 		// A little HTTP server.
 		go func() {
-			lis, err := server1Net.Listen("tcp", ":80")
+			lis, err := net.Listen("tcp", ":80")
 			if err != nil {
 				logger.Error("Failed to listen", "error", err)
 				return
@@ -306,7 +320,6 @@ func TestAddAndRemovePeer(t *testing.T) {
 	go func() {
 		conf := latestconfig.Config{
 			Name:       "server2",
-			ListenPort: 12346,
 			PrivateKey: server2PrivateKey.String(),
 			IPs:        []string{"100.64.0.3"},
 			Peers: []latestconfig.PeerConfig{
@@ -317,13 +330,15 @@ func TestAddAndRemovePeer(t *testing.T) {
 			},
 		}
 
-		var err error
-		server2Net, err = noisysockets.OpenNetwork(logger, &conf)
+		net, err := noisysockets.OpenNetwork(logger, &conf)
 		if err != nil {
 			logger.Error("Failed to create server network", "error", err)
 			return
 		}
-		defer server2Net.Close()
+		defer net.Close()
+
+		server2Port = net.ListenPort()
+		portWg.Done()
 
 		var mux http.ServeMux
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -337,7 +352,7 @@ func TestAddAndRemovePeer(t *testing.T) {
 
 		// A little HTTP server.
 		go func() {
-			lis, err := server2Net.Listen("tcp", ":80")
+			lis, err := net.Listen("tcp", ":80")
 			if err != nil {
 				logger.Error("Failed to listen", "error", err)
 				return
@@ -357,16 +372,17 @@ func TestAddAndRemovePeer(t *testing.T) {
 		_ = srv.Close()
 	}()
 
+	portWg.Wait()
+
 	conf := latestconfig.Config{
 		Name:       "client",
-		ListenPort: 12347,
 		PrivateKey: clientPrivateKey.String(),
 		IPs:        []string{"100.64.0.1"},
 		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "server1",
 				PublicKey: server1PrivateKey.Public().String(),
-				Endpoint:  "localhost:12345",
+				Endpoint:  stdnet.JoinHostPort("localhost", fmt.Sprint(server1Port)),
 				IPs:       []string{"100.64.0.2"},
 			},
 		},
@@ -405,7 +421,7 @@ func TestAddAndRemovePeer(t *testing.T) {
 	err = net.AddPeer(latestconfig.PeerConfig{
 		Name:      "server2",
 		PublicKey: server2PrivateKey.Public().String(),
-		Endpoint:  "localhost:12346",
+		Endpoint:  stdnet.JoinHostPort("localhost", fmt.Sprint(server2Port)),
 		IPs:       []string{"100.64.0.3"},
 	})
 	require.NoError(t, err)

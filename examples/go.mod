@@ -6,7 +6,7 @@ replace github.com/noisysockets/noisysockets => ../
 
 require (
 	github.com/docker/docker v26.0.2+incompatible
-	github.com/noisysockets/network v0.5.2
+	github.com/noisysockets/network v0.6.3
 	github.com/noisysockets/noisysockets v0.0.0-00010101000000-000000000000
 	github.com/testcontainers/testcontainers-go v0.30.0
 )
