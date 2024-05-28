@@ -31,6 +31,8 @@ github.com/hashicorp/errwrap v1.0.0 h1:hLrqtEDnRye3+sgx6z4qVLNuviH3MR5aQ0ykNJa/U
 github.com/hashicorp/errwrap v1.0.0/go.mod h1:YH+1FKiLXxHSkmPseP+kNlulaMuP3n2brvKWEqk/Jc4=
 github.com/hashicorp/go-multierror v1.1.1 h1:H5DkEtf6CXdFp0N0Em5UCwQpXMWke8IA0+lD48awMYo=
 github.com/hashicorp/go-multierror v1.1.1/go.mod h1:iw975J/qwKPdAO1clOe2L8331t/9/fmwbPZ6JB6eMoM=
+github.com/jinzhu/copier v0.4.0 h1:w3ciUoD19shMCRargcpm0cm91ytaBhDvuRpz1ODO/U8=
+github.com/jinzhu/copier v0.4.0/go.mod h1:DfbEm0FYsaqBcKcFuvmOZb218JkPGtvSHsKg8S8hyyg=
 github.com/jung-kurt/gofpdf v1.0.3-0.20190309125859-24315acbbda5/go.mod h1:7Id9E/uU8ce6rXgefFLlgrJj/GYY22cpxn+r32jIOes=
 github.com/kevinburke/hostsfile v0.0.0-20220522040509-e5e984885321 h1:zfI6ImDFFLxvWztL5C7pigHTGyjfI3EtS/UDaDKk7dg=
 github.com/kevinburke/hostsfile v0.0.0-20220522040509-e5e984885321/go.mod h1:jxc0FMWcuW3a+dQiKqEesZGT5abRU8gFVbdJaykah/g=
@@ -55,10 +57,12 @@ github.com/noisysockets/go-fqdn v1.1.0 h1:UcBIA0ul3hod8036gExMipIjLhWuvE7Fk3PVct
 github.com/noisysockets/go-fqdn v1.1.0/go.mod h1:MyLHpBO/g783D5FiMUfGZe4Tzs+8DK0rW83wqOcitas=
 github.com/noisysockets/netstack v0.6.0 h1:KNXPSEXLbB6ulUEvOsMiNSBTu93l40nO/X5utXlUTS4=
 github.com/noisysockets/netstack v0.6.0/go.mod h1:tt7ze5obpFYDX9aIygoEb+6p5q1FNbIfg2KcFiX65bc=
-github.com/noisysockets/network v0.8.2 h1:/gjOMiShb11mjCT1NWFvUEy2cLurdBw3uKGbV+EqyKI=
-github.com/noisysockets/network v0.8.2/go.mod h1:NfuhIv4kzw6+cO6PHhBiNUSBL8Ep+4qFSutJmg4CgIw=
-github.com/noisysockets/resolver v0.4.1 h1:w8o1VA/ieM0MnUAENLDi3FHosmdOtBKmciGsfbww7dQ=
-github.com/noisysockets/resolver v0.4.1/go.mod h1:akWUhw8gutJR8pPhHKiWMLy5XPovCqPiYkOs2VQuBzk=
+github.com/noisysockets/network v0.9.0 h1:i0yKjbIUr3ChQT5saepHJCqt5JA2hTTXbaUoesix8Rs=
+github.com/noisysockets/network v0.9.0/go.mod h1:wfH6XCa9c4UcRUtwd/f4hlan0AcgVAjFoM7FyKPKnG0=
+github.com/noisysockets/pinger v0.4.2 h1:J+ksTzJaJcersvrAdhWGfSD1QXcroGpjO85XQZamcqE=
+github.com/noisysockets/pinger v0.4.2/go.mod h1:vURwBVmoQtKHhzmRD4MNURVfAGEeNcK/gTWojvpnsYY=
+github.com/noisysockets/resolver v0.5.2 h1:iqFVH8j38CWMzrbLGIRK2QgDzRID87zfwpnx3kJ7j/g=
+github.com/noisysockets/resolver v0.5.2/go.mod h1:fBww4kWCFHCgMu0UY4VUT7blRsIX0WMmLrOIWAy6zSc=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rivo/uniseg v0.2.0 h1:S1pD9weZBuJdFmowNwbpi7BJ8TNftyUImj/0WQi72jY=

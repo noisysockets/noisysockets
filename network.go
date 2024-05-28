@@ -88,11 +88,11 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 		peerNamesResolver.addPeer(conf.Name, addrs...)
 	}
 
-	netConf := &network.UserspaceNetworkConfig{
+	netConf := network.UserspaceNetworkConfig{
 		Hostname:  conf.Name,
 		Domain:    domain,
 		Addresses: addrPrefixes,
-		ResolverFactory: func(dialContext network.DialContextFunc) resolver.Resolver {
+		ResolverFactory: func(dialContext network.DialContextFunc) (resolver.Resolver, error) {
 			peerNamesResolver.dialContext = dialContext
 
 			relativeConf := &resolver.RelativeResolverConfig{
@@ -131,7 +131,7 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 				res = peerNamesResolver
 			}
 
-			return resolver.Chain(resolver.IP(), resolver.Relative(res, relativeConf))
+			return resolver.Chain(resolver.IP(), resolver.Relative(res, relativeConf)), nil
 		},
 	}
 
