@@ -38,12 +38,10 @@ func FromINI(r io.Reader) (conf *latestconfig.Config, err error) {
 	}
 
 	key, err := ifaceSection.GetKey("Address")
-	if err != nil {
-		return nil, fmt.Errorf("missing address: %w", err)
-	}
-
-	for _, ip := range strings.Split(key.String(), ",") {
-		conf.IPs = append(conf.IPs, strings.TrimSpace(ip))
+	if err == nil {
+		for _, ip := range strings.Split(key.String(), ",") {
+			conf.IPs = append(conf.IPs, strings.TrimSpace(ip))
+		}
 	}
 
 	key, err = ifaceSection.GetKey("ListenPort")
@@ -277,7 +275,7 @@ func StripINI(dst io.Writer, src io.Reader) error {
 	}
 
 	wgQuickKeyNames := []string{
-		"MTU", "DNS", "Table",
+		"Address", "MTU", "DNS", "Table",
 		"PreUp", "PreDown", "PostUp", "PostDown",
 		"SaveConfig",
 	}

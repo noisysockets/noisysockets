@@ -67,6 +67,7 @@ func TestStripINI(t *testing.T) {
 
 	require.NotZero(t, conf.ListenPort)
 
-	// The MTU should have been stripped.
+	// The address and MTU should have been stripped.
+	require.Empty(t, conf.IPs)
 	require.Zero(t, conf.MTU)
 }
