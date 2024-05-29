@@ -102,9 +102,11 @@ func (peer *Peer) timersActive() bool {
 }
 
 func expiredRetransmitHandshake(peer *Peer) {
+	logger := peer.transport.logger.With(slog.String("peer", peer.String()))
+
 	if peer.timers.handshakeAttempts.Load() > MaxTimerHandshakes {
-		peer.transport.logger.Error("Handshake did not complete after multiple attempts, giving up",
-			slog.String("peer", peer.String()), slog.Int("maxAttempts", MaxTimerHandshakes+2))
+		logger.Warn("Handshake did not complete after multiple attempts, giving up",
+			slog.Int("attempts", int(peer.timers.handshakeAttempts.Load()+1)))
 
 		if peer.timersActive() {
 			peer.timers.sendKeepalive.Del()
@@ -123,13 +125,11 @@ func expiredRetransmitHandshake(peer *Peer) {
 		}
 	} else {
 		peer.timers.handshakeAttempts.Add(1)
-		peer.transport.logger.Warn("Handshake did not complete within timeout, retrying",
-			slog.String("peer", peer.String()), slog.Int("timeout", int(RekeyTimeout.Seconds())),
-			slog.Int("try", int(peer.timers.handshakeAttempts.Load()+1)))
+		logger.Debug("Handshake did not complete within timeout, retrying",
+			slog.Int("attempt", int(peer.timers.handshakeAttempts.Load()+1)))
 
 		if err := peer.SendHandshakeInitiation(true); err != nil {
-			peer.transport.logger.Error("Failed to retransmit handshake initiation",
-				slog.String("peer", peer.String()), slog.Any("error", err))
+			logger.Error("Failed to retransmit handshake initiation", slog.Any("error", err))
 		}
 	}
 }

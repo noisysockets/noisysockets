@@ -5,7 +5,7 @@ go 1.22.0
 replace github.com/noisysockets/noisysockets => ../
 
 require (
-	github.com/noisysockets/network v0.9.0
+	github.com/noisysockets/network v0.9.1
 	github.com/noisysockets/noisysockets v0.0.0-00010101000000-000000000000
 	github.com/testcontainers/testcontainers-go v0.30.0
 )

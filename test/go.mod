@@ -49,7 +49,7 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/noisysockets/go-fqdn v1.1.0 // indirect
 	github.com/noisysockets/netstack v0.6.0 // indirect
-	github.com/noisysockets/network v0.9.0 // indirect
+	github.com/noisysockets/network v0.9.1 // indirect
 	github.com/noisysockets/pinger v0.4.2 // indirect
 	github.com/noisysockets/resolver v0.5.2 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect

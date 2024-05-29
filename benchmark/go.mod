@@ -8,7 +8,7 @@ require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
 	github.com/cheggaaa/pb/v3 v3.1.5
 	github.com/hashicorp/go-multierror v1.1.1
-	github.com/noisysockets/network v0.9.0
+	github.com/noisysockets/network v0.9.1
 	github.com/noisysockets/noisysockets v0.0.0-00010101000000-000000000000
 	github.com/rogpeppe/go-internal v1.12.0
 	github.com/urfave/cli/v2 v2.27.2
