@@ -54,3 +54,19 @@ func TestToINI(t *testing.T) {
 
 	require.Equal(t, string(expected), buf.String())
 }
+
+func TestStripINI(t *testing.T) {
+	f, err := os.Open("testdata/wg0.conf")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	require.NoError(t, config.StripINI(&buf, f))
+
+	conf, err := config.FromINI(bytes.NewReader(buf.Bytes()))
+	require.NoError(t, err)
+
+	require.NotZero(t, conf.ListenPort)
+
+	// The MTU should have been stripped.
+	require.Zero(t, conf.MTU)
+}

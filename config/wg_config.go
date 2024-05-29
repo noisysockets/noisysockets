@@ -262,3 +262,33 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 
 	return nil
 }
+
+// StripINI removes `wg-quick` specific configuration from the given INI file.
+// This is analogous to the `wg-quick strip` command.
+func StripINI(dst io.Writer, src io.Reader) error {
+	iniConf, err := ini.LoadSources(ini.LoadOptions{AllowNonUniqueSections: true}, src)
+	if err != nil {
+		return fmt.Errorf("failed to parse INI config: %w", err)
+	}
+
+	ifaceSection := iniConf.Section("Interface")
+	if ifaceSection == nil {
+		return fmt.Errorf("missing Interface section")
+	}
+
+	wgQuickKeyNames := []string{
+		"MTU", "DNS", "Table",
+		"PreUp", "PreDown", "PostUp", "PostDown",
+		"SaveConfig",
+	}
+
+	for _, keyName := range wgQuickKeyNames {
+		ifaceSection.DeleteKey(keyName)
+	}
+
+	if _, err := iniConf.WriteTo(dst); err != nil {
+		return fmt.Errorf("failed to marshal INI config: %w", err)
+	}
+
+	return nil
+}
