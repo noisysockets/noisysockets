@@ -35,6 +35,9 @@ import (
 	"time"
 )
 
+// Take inspiration from RFC 9000 (QUIC) for default MTU.
+const DefaultMTU = 1232 - MessageTransportSize
+
 /* Specification constants */
 
 const (

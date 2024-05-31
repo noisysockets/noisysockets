@@ -46,8 +46,6 @@ import (
 	"github.com/noisysockets/noisysockets/types"
 )
 
-const DefaultMTU = 1420
-
 type Transport struct {
 	ctx    context.Context
 	cancel context.CancelFunc
