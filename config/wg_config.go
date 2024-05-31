@@ -17,6 +17,7 @@ import (
 
 	"github.com/noisysockets/noisysockets/config/types"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
+	"github.com/noisysockets/noisysockets/internal/transport"
 	"gopkg.in/ini.v1"
 )
 
@@ -170,10 +171,13 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 		return fmt.Errorf("failed to create key: %w", err)
 	}
 
-	if conf.MTU != 0 {
-		if _, err := ifaceSection.NewKey("MTU", fmt.Sprintf("%d", conf.MTU)); err != nil {
-			return fmt.Errorf("failed to create key: %w", err)
-		}
+	mtu := conf.MTU
+	if mtu == 0 {
+		mtu = transport.DefaultMTU
+	}
+
+	if _, err := ifaceSection.NewKey("MTU", fmt.Sprintf("%d", mtu)); err != nil {
+		return fmt.Errorf("failed to create key: %w", err)
 	}
 
 	if _, err := ifaceSection.NewKey("PrivateKey", conf.PrivateKey); err != nil {
