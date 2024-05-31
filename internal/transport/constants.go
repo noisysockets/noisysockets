@@ -35,8 +35,8 @@ import (
 	"time"
 )
 
-// Take inspiration from RFC 9000 (QUIC) for default MTU.
-const DefaultMTU = 1232 - MessageTransportSize
+// Use as small MTU as reasonable to avoid fragmentation, particularly on IPv6.
+const DefaultMTU = 1280
 
 /* Specification constants */
 
