@@ -30,9 +30,7 @@ import (
 	"github.com/noisysockets/resolver"
 )
 
-var (
-	_ network.Network = (*NoisySocketsNetwork)(nil)
-)
+var _ network.Network = (*NoisySocketsNetwork)(nil)
 
 // NoisySocketsNetwork is a wrapper around a userspace WireGuard peer.
 type NoisySocketsNetwork struct {
@@ -97,41 +95,38 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 
 			relativeConf := &resolver.RelativeResolverConfig{
 				Search: []string{domain, "."},
-				NDots:  1,
+				NDots:  util.PointerTo(1),
 			}
 
 			var res resolver.Resolver
 			if conf.DNS != nil {
-				var dnsProtocol resolver.Protocol
+				var transport resolver.DNSTransport
 				switch conf.DNS.Protocol {
 				case latestconfig.DNSProtocolAuto, latestconfig.DNSProtocolUDP:
-					dnsProtocol = resolver.ProtocolUDP
+					transport = resolver.DNSTransportUDP
 				case latestconfig.DNSProtocolTCP:
-					dnsProtocol = resolver.ProtocolTCP
+					transport = resolver.DNSTransportTCP
 				case latestconfig.DNSProtocolTLS:
-					dnsProtocol = resolver.ProtocolTLS
+					transport = resolver.DNSTransportTLS
 				}
 
-				var dnsResolvers []resolver.Resolver
+				var resolvers []resolver.Resolver
 				for _, nameserver := range nameservers {
-					dnsResolvers = append(dnsResolvers, resolver.DNS(
+					resolvers = append(resolvers, resolver.DNS(
 						&resolver.DNSResolverConfig{
-							Protocol:    dnsProtocol,
 							Server:      nameserver,
-							Timeout:     util.PointerTo(5 * time.Second),
-							DialContext: dialContext,
+							Transport:   util.PointerTo(transport),
+							DialContext: resolver.DialContextFunc(dialContext),
 						},
 					))
 				}
 
-				res = resolver.Chain(peerNamesResolver, resolver.Retry(resolver.RoundRobin(dnsResolvers...), &resolver.RetryResolverConfig{
-					Attempts: 3,
-				}))
+				res = resolver.Sequential(peerNamesResolver, resolver.Retry(resolver.RoundRobin(resolvers...), nil))
 			} else {
 				res = peerNamesResolver
 			}
 
-			return resolver.Chain(resolver.IP(), resolver.Relative(res, relativeConf)), nil
+			return resolver.Sequential(resolver.Literal(), resolver.Relative(res, relativeConf)), nil
 		},
 	}
 

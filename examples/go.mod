@@ -5,7 +5,7 @@ go 1.22.0
 replace github.com/noisysockets/noisysockets => ../
 
 require (
-	github.com/noisysockets/network v0.10.0
+	github.com/noisysockets/network v0.11.0
 	github.com/noisysockets/noisysockets v0.0.0-00010101000000-000000000000
 	github.com/testcontainers/testcontainers-go v0.30.0
 )
@@ -33,7 +33,6 @@ require (
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jinzhu/copier v0.4.0 // indirect
-	github.com/kevinburke/hostsfile v0.0.0-20220522040509-e5e984885321 // indirect
 	github.com/klauspost/compress v1.16.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
@@ -45,10 +44,10 @@ require (
 	github.com/moby/sys/user v0.1.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
-	github.com/noisysockets/go-fqdn v1.1.0 // indirect
 	github.com/noisysockets/netstack v0.7.0 // indirect
+	github.com/noisysockets/netutil v0.4.0 // indirect
 	github.com/noisysockets/pinger v0.4.2 // indirect
-	github.com/noisysockets/resolver v0.5.2 // indirect
+	github.com/noisysockets/resolver v0.7.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

@@ -17,11 +17,10 @@ import (
 	"sync"
 
 	"github.com/miekg/dns"
+	"github.com/noisysockets/netutil/addresses"
+	"github.com/noisysockets/netutil/addrselect"
 	"github.com/noisysockets/network"
-	"github.com/noisysockets/noisysockets/util"
 	"github.com/noisysockets/resolver"
-	"github.com/noisysockets/resolver/addrselect"
-	resolverutil "github.com/noisysockets/resolver/util"
 )
 
 var (
@@ -42,18 +41,9 @@ func newPeerResolver(domain string) *peerResolver {
 	}
 }
 
-func (r *peerResolver) LookupHost(ctx context.Context, host string) ([]string, error) {
-	addrs, err := r.LookupNetIP(ctx, "ip", host)
-	if err != nil {
-		return nil, err
-	}
-
-	return util.Strings(addrs), nil
-}
-
 func (r *peerResolver) LookupNetIP(ctx context.Context, network, host string) ([]netip.Addr, error) {
 	r.mu.RLock()
-	allAddrs, ok := r.nameToAddr[dns.CanonicalName(host)]
+	addrs, ok := r.nameToAddr[dns.CanonicalName(host)]
 	r.mu.RUnlock()
 	if !ok {
 		return nil, &net.DNSError{
@@ -70,13 +60,7 @@ func (r *peerResolver) LookupNetIP(ctx context.Context, network, host string) ([
 		}
 	}
 
-	addrs, err := resolverutil.FilterAddresses(allAddrs, network)
-	if err != nil {
-		return nil, &net.DNSError{
-			Err:  err.Error(),
-			Name: host,
-		}
-	}
+	addrs = addresses.FilterByNetwork(addrs, network)
 
 	dial := func(network, address string) (net.Conn, error) {
 		return r.dialContext(ctx, network, address)
