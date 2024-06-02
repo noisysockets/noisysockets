@@ -95,8 +95,8 @@ github.com/noisysockets/network v0.11.0 h1:ivZ173+dMAFyR4+Z4xGd51YPN2KTNr7wrcGSI
 github.com/noisysockets/network v0.11.0/go.mod h1:OaOkAES+nEwkmh4EO/SFCbY7DLaWDVU/EfT6XelhZj0=
 github.com/noisysockets/pinger v0.4.2 h1:J+ksTzJaJcersvrAdhWGfSD1QXcroGpjO85XQZamcqE=
 github.com/noisysockets/pinger v0.4.2/go.mod h1:vURwBVmoQtKHhzmRD4MNURVfAGEeNcK/gTWojvpnsYY=
-github.com/noisysockets/resolver v0.7.0 h1:Jxo19BhG91XyWKdfOUhiBLq51acRdtYGdpqvq4pZsGM=
-github.com/noisysockets/resolver v0.7.0/go.mod h1:iQxHihbTH2R6WK2+zQpG3H9Eyb2vUxZPs+1QNvINfjY=
+github.com/noisysockets/resolver v0.8.0 h1:1GiTHxTREzQYwxBvGXTO2FE49GWGhFQHVILuMXhoheE=
+github.com/noisysockets/resolver v0.8.0/go.mod h1:iQxHihbTH2R6WK2+zQpG3H9Eyb2vUxZPs+1QNvINfjY=
 github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8Oi/yOhh5U=
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.0 h1:8SG7/vwALn54lVB/0yZ/MMwhFrPYtpEHQb2IpWsCzug=

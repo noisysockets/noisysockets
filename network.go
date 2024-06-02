@@ -113,7 +113,7 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 				var resolvers []resolver.Resolver
 				for _, nameserver := range nameservers {
 					resolvers = append(resolvers, resolver.DNS(
-						&resolver.DNSResolverConfig{
+						resolver.DNSResolverConfig{
 							Server:      nameserver,
 							Transport:   util.PointerTo(transport),
 							DialContext: resolver.DialContextFunc(dialContext),
