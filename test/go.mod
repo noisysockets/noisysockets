@@ -48,7 +48,7 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/noisysockets/netstack v0.7.0 // indirect
 	github.com/noisysockets/netutil v0.4.0 // indirect
-	github.com/noisysockets/network v0.11.0 // indirect
+	github.com/noisysockets/network v0.12.2 // indirect
 	github.com/noisysockets/pinger v0.4.2 // indirect
 	github.com/noisysockets/resolver v0.8.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
