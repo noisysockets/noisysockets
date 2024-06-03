@@ -53,6 +53,10 @@ func FromINI(r io.Reader) (conf *latestconfig.Config, err error) {
 	key, err = ifaceSection.GetKey("MTU")
 	if err == nil {
 		conf.MTU = key.MustInt(0)
+	} else {
+		// Given our default MTU is different from upstream wireguard,
+		// We need to explicitly set it if it's not present in the config.
+		conf.MTU = 1420
 	}
 
 	key, err = ifaceSection.GetKey("PrivateKey")

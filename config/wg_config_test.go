@@ -16,6 +16,7 @@ import (
 
 	"github.com/noisysockets/noisysockets/config"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/ini.v1"
 )
 
 func TestFromINI(t *testing.T) {
@@ -62,12 +63,22 @@ func TestStripINI(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, config.StripINI(&buf, f))
 
-	conf, err := config.FromINI(bytes.NewReader(buf.Bytes()))
+	iniConf, err := ini.LoadSources(ini.LoadOptions{AllowNonUniqueSections: true}, bytes.NewReader(buf.Bytes()))
 	require.NoError(t, err)
 
-	require.NotZero(t, conf.ListenPort)
+	ifaceSection := iniConf.Section("Interface")
+	require.NotNil(t, ifaceSection)
+
+	key, err := ifaceSection.GetKey("ListenPort")
+	require.NoError(t, err)
+
+	// The ListenPort should not have been stripped.
+	require.NotZero(t, key.MustInt(0))
 
 	// The address and MTU should have been stripped.
-	require.Empty(t, conf.IPs)
-	require.Zero(t, conf.MTU)
+	_, err = ifaceSection.GetKey("Address")
+	require.Error(t, err)
+
+	_, err = ifaceSection.GetKey("MTU")
+	require.Error(t, err)
 }
