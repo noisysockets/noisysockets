@@ -18,8 +18,6 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/noisysockets/netutil/addresses"
-	"github.com/noisysockets/netutil/addrselect"
-	"github.com/noisysockets/network"
 	"github.com/noisysockets/resolver"
 )
 
@@ -28,10 +26,9 @@ var (
 )
 
 type peerResolver struct {
-	mu          sync.RWMutex
-	nameToAddr  map[string][]netip.Addr
-	domain      string
-	dialContext network.DialContextFunc
+	mu         sync.RWMutex
+	nameToAddr map[string][]netip.Addr
+	domain     string
 }
 
 func newPeerResolver(domain string) *peerResolver {
@@ -61,12 +58,12 @@ func (r *peerResolver) LookupNetIP(ctx context.Context, network, host string) ([
 	}
 
 	addrs = addresses.FilterByNetwork(addrs, network)
-
-	dial := func(network, address string) (net.Conn, error) {
-		return r.dialContext(ctx, network, address)
+	if len(addrs) == 0 {
+		return nil, &net.DNSError{
+			Err:  resolver.ErrNoSuchHost.Error(),
+			Name: host,
+		}
 	}
-
-	addrselect.SortByRFC6724(dial, addrs)
 
 	return addrs, nil
 }

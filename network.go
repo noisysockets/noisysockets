@@ -91,8 +91,6 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 		Domain:    domain,
 		Addresses: addrPrefixes,
 		ResolverFactory: func(dialContext network.DialContextFunc) (resolver.Resolver, error) {
-			peerNamesResolver.dialContext = dialContext
-
 			relativeConf := &resolver.RelativeResolverConfig{
 				Search: []string{domain, "."},
 				NDots:  util.PointerTo(1),
@@ -121,7 +119,9 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 					))
 				}
 
-				res = resolver.Sequential(peerNamesResolver, resolver.Retry(resolver.RoundRobin(resolvers...), nil))
+				res = resolver.Sequential(resolver.PreferredAddress(peerNamesResolver, &resolver.PreferredAddressResolverConfig{
+					DialContext: resolver.DialContextFunc(dialContext),
+				}), resolver.Retry(resolver.RoundRobin(resolvers...), nil))
 			} else {
 				res = peerNamesResolver
 			}

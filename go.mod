@@ -7,7 +7,7 @@ require (
 	github.com/neilotoole/slogt v1.1.0
 	github.com/noisysockets/netutil v0.4.0
 	github.com/noisysockets/network v0.12.2
-	github.com/noisysockets/resolver v0.8.0
+	github.com/noisysockets/resolver v0.10.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/crypto v0.23.0
 	golang.org/x/net v0.25.0
