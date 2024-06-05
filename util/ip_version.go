@@ -16,7 +16,7 @@ import (
 // HasIPv4 returns true if the list of addresses contains an IPv4 address.
 func HasIPv4(addrs []netip.Addr) bool {
 	for _, addr := range addrs {
-		if addr.Is4() {
+		if addr.Unmap().Is4() {
 			return true
 		}
 	}

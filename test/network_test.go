@@ -26,7 +26,6 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/neilotoole/slogt"
-	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets"
 	"github.com/noisysockets/noisysockets/config"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
@@ -38,11 +37,6 @@ import (
 )
 
 func TestNetwork(t *testing.T) {
-	network.EnableDebug(true)
-	t.Cleanup(func() {
-		network.EnableDebug(false)
-	})
-
 	logger := slogt.New(t)
 
 	clientPrivateKey, err := types.NewPrivateKey()
@@ -54,6 +48,8 @@ func TestNetwork(t *testing.T) {
 	udpServerPrivateKey, err := types.NewPrivateKey()
 	require.NoError(t, err)
 
+	var net *noisysockets.NoisySocketsNetwork
+
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(func() {
 		cancel()
@@ -62,7 +58,7 @@ func TestNetwork(t *testing.T) {
 		time.Sleep(time.Second)
 
 		// Make sure we didn't leak any packet buffers.
-		require.Zero(t, network.DefaultPacketPool.Count())
+		require.Zero(t, net.BufferedPacketsCount())
 	})
 
 	var tcpServerPort, udpServerPort uint16
@@ -199,7 +195,7 @@ func TestNetwork(t *testing.T) {
 			}},
 	}
 
-	net, err := noisysockets.OpenNetwork(logger, &conf)
+	net, err = noisysockets.OpenNetwork(logger, &conf)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, net.Close())

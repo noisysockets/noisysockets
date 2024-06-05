@@ -125,7 +125,7 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 	)
 
 	for i := range packets {
-		packets[i] = network.NewPacket()
+		packets[i] = transport.pool.packets.Borrow()
 		bufs[i] = packets[i].Buf[:]
 	}
 	defer func() {
@@ -218,7 +218,7 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 					elemsByPeer[peer] = elemsForPeer
 				}
 				elemsForPeer.elems = append(elemsForPeer.elems, elem)
-				packets[i] = network.NewPacket()
+				packets[i] = transport.pool.packets.Borrow()
 				bufs[i] = packets[i].Buf[:]
 				continue
 
@@ -251,7 +251,7 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 				packet:   packet,
 				endpoint: endpoints[i],
 			}:
-				packets[i] = network.NewPacket()
+				packets[i] = transport.pool.packets.Borrow()
 				bufs[i] = packets[i].Buf[:]
 			default:
 			}

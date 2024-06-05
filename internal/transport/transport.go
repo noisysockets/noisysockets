@@ -100,6 +100,7 @@ type Transport struct {
 	cookieChecker CookieChecker
 
 	pool struct {
+		packets                   *network.PacketPool
 		inboundElementsContainer  *waitpool.WaitPool[*QueueInboundElementsContainer]
 		outboundElementsContainer *waitpool.WaitPool[*QueueOutboundElementsContainer]
 		inboundElements           *waitpool.WaitPool[*QueueInboundElement]
@@ -320,7 +321,7 @@ func (transport *Transport) SetPrivateKey(sk types.NoisePrivateKey) {
 	}
 }
 
-func NewTransport(ctx context.Context, logger *slog.Logger, nic network.Interface, bind conn.Bind) *Transport {
+func NewTransport(ctx context.Context, logger *slog.Logger, nic network.Interface, bind conn.Bind, packetPool *network.PacketPool) *Transport {
 	t := new(Transport)
 	t.state.state.Store(uint32(transportStateDown))
 	t.closed = make(chan struct{})
@@ -334,6 +335,7 @@ func NewTransport(ctx context.Context, logger *slog.Logger, nic network.Interfac
 	t.rate.limiter.Init()
 	t.indexTable.Init()
 
+	t.pool.packets = packetPool
 	t.PopulatePools()
 
 	// create queues

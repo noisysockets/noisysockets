@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/noisysockets/netutil/ptr"
 	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets/config"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
@@ -36,6 +37,7 @@ var _ network.Network = (*NoisySocketsNetwork)(nil)
 type NoisySocketsNetwork struct {
 	*network.UserspaceNetwork
 	logger            *slog.Logger
+	packetPool        *network.PacketPool
 	transport         *transport.Transport
 	peersByName       map[string]types.NoisePublicKey
 	nameForPeer       map[types.NoisePublicKey]string
@@ -86,14 +88,18 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 		peerNamesResolver.addPeer(conf.Name, addrs...)
 	}
 
+	// Unbounded packet pool.
+	packetPool := network.NewPacketPool(0, false)
+
 	netConf := network.UserspaceNetworkConfig{
-		Hostname:  conf.Name,
-		Domain:    domain,
-		Addresses: addrPrefixes,
+		Hostname:   conf.Name,
+		Domain:     domain,
+		Addresses:  addrPrefixes,
+		PacketPool: packetPool,
 		ResolverFactory: func(dialContext network.DialContextFunc) (resolver.Resolver, error) {
 			relativeConf := &resolver.RelativeResolverConfig{
 				Search: []string{domain, "."},
-				NDots:  util.PointerTo(1),
+				NDots:  ptr.To(1),
 			}
 
 			var res resolver.Resolver
@@ -113,7 +119,7 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 					resolvers = append(resolvers, resolver.DNS(
 						resolver.DNSResolverConfig{
 							Server:      nameserver,
-							Transport:   util.PointerTo(transport),
+							Transport:   ptr.To(transport),
 							DialContext: resolver.DialContextFunc(dialContext),
 						},
 					))
@@ -132,6 +138,7 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 
 	net := &NoisySocketsNetwork{
 		logger:            logger,
+		packetPool:        packetPool,
 		peersByName:       make(map[string]types.NoisePublicKey),
 		nameForPeer:       make(map[types.NoisePublicKey]string),
 		peerNamesResolver: peerNamesResolver,
@@ -142,7 +149,10 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 		mtu = transport.DefaultMTU
 	}
 
-	nicA, nicB := network.Pipe(mtu, conn.IdealBatchSize)
+	nicA, nicB := network.Pipe(&network.PipeConfiguration{
+		MTU:       &mtu,
+		BatchSize: ptr.To(conn.IdealBatchSize),
+	})
 
 	ctx := context.Background()
 	net.UserspaceNetwork, err = network.Userspace(ctx, logger, nicA, netConf)
@@ -152,7 +162,7 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 
 	// TODO: Refactor the transport to directly implement network.Interface.
 	// Will then be able to get rid of the pipe (and the additional copy).
-	net.transport = transport.NewTransport(ctx, logger, nicB, conn.NewStdNetBind())
+	net.transport = transport.NewTransport(ctx, logger, nicB, conn.NewStdNetBind(), packetPool)
 
 	net.transport.SetPrivateKey(privateKey)
 
@@ -206,6 +216,12 @@ func (net *NoisySocketsNetwork) Close() error {
 // ListenPort returns the port that wireguard is listening on.
 func (net *NoisySocketsNetwork) ListenPort() uint16 {
 	return net.transport.GetPort()
+}
+
+// BufferedPacketsCount returns the number of buffered packets.
+// This is exposed for leak testing purposes.
+func (net *NoisySocketsNetwork) BufferedPacketsCount() int {
+	return net.packetPool.Count()
 }
 
 // AddPeer adds a wireguard peer to the network.

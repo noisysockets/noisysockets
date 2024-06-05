@@ -2,6 +2,9 @@
 apiVersion: noisysockets.github.com/v1alpha2
 kind: Config
 privateKey: SFN1gntnAutVFefwrPDlM1W2/LGWaRSn2hq06TvL2GY=
+# Max protocol MTU for linux loopback, 
+# 65535 (Media MTU) - 20 (IPv4 Header) - 8 (UDP Header) - 32 (WireGuard Header)
+mtu: 65475 
 ips:
 - 100.64.0.2
 peers:

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	stdnet "net"
 
@@ -73,14 +74,17 @@ func Start(ctx context.Context, privatekey types.NoisePrivateKey, clientPublicKe
 	}
 
 	wgReq := testcontainers.ContainerRequest{
-		Image:        "ghcr.io/noisysockets/nsh:v0.5.0",
+		Image:        "ghcr.io/noisysockets/nsh:v0.8.1",
 		ExposedPorts: []string{"51820/udp"},
-		Cmd:          []string{"serve", "--config=/etc/nsh/noisysockets.yaml", "--enable-dns", "--enable-router"},
-		// Run as root for the tests so we can avoid permission issues with the config file,
-		// sadly testcontainers-go doesn't support setting uid/gid when copying files.
-		User: "0:0",
+		Cmd:          []string{"up", "--enable-dns", "--enable-router"},
 		Files: []testcontainers.ContainerFile{
-			{HostFilePath: confPath, ContainerFilePath: "/etc/nsh/noisysockets.yaml", FileMode: 0o400},
+			// Normally this would be 0o400 but testcontainers doesn't let us set the
+			// file owner.
+			{
+				HostFilePath:      confPath,
+				ContainerFilePath: "/home/nonroot/.config/nsh/noisysockets.yaml",
+				FileMode:          0o444,
+			},
 		},
 	}
 
@@ -92,6 +96,9 @@ func Start(ctx context.Context, privatekey types.NoisePrivateKey, clientPublicKe
 		err = fmt.Errorf("failed to start wireguard router: %w", err)
 		return
 	}
+
+	// Wait for the router to start.
+	time.Sleep(time.Second)
 
 	wgHost, err := wgContainer.Host(ctx)
 	if err != nil {

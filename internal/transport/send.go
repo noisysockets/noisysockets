@@ -87,7 +87,7 @@ type QueueOutboundElementsContainer struct {
 
 func (transport *Transport) NewOutboundElement() *QueueOutboundElement {
 	elem := transport.GetOutboundElement()
-	elem.packet = network.NewPacket()
+	elem.packet = transport.pool.packets.Borrow()
 	elem.nonce = 0
 	// keypair and peer were cleared (if necessary) by clearPointers.
 	return elem

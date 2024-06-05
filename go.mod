@@ -5,8 +5,8 @@ go 1.22.0
 require (
 	github.com/miekg/dns v1.1.59
 	github.com/neilotoole/slogt v1.1.0
-	github.com/noisysockets/netutil v0.6.2
-	github.com/noisysockets/network v0.15.0
+	github.com/noisysockets/netutil v0.7.0
+	github.com/noisysockets/network v0.16.0
 	github.com/noisysockets/resolver v0.10.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/crypto v0.24.0
