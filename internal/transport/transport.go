@@ -40,6 +40,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/noisysockets/netutil/waitpool"
 	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/ratelimiter"
@@ -98,11 +99,10 @@ type Transport struct {
 	cookieChecker CookieChecker
 
 	pool struct {
-		inboundElementsContainer  *WaitPool
-		outboundElementsContainer *WaitPool
-		messageBuffers            *WaitPool
-		inboundElements           *WaitPool
-		outboundElements          *WaitPool
+		inboundElementsContainer  *waitpool.WaitPool[*QueueInboundElementsContainer]
+		outboundElementsContainer *waitpool.WaitPool[*QueueOutboundElementsContainer]
+		inboundElements           *waitpool.WaitPool[*QueueInboundElement]
+		outboundElements          *waitpool.WaitPool[*QueueOutboundElement]
 	}
 
 	queue struct {

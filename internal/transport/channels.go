@@ -119,7 +119,7 @@ func (transport *Transport) flushInboundQueue(q *autodrainingInboundQueue) {
 		case elemsContainer := <-q.c:
 			elemsContainer.Lock()
 			for _, elem := range elemsContainer.elems {
-				transport.PutMessageBuffer(elem.buffer)
+				elem.packet.Release()
 				transport.PutInboundElement(elem)
 			}
 			transport.PutInboundElementsContainer(elemsContainer)
@@ -152,7 +152,7 @@ func (transport *Transport) flushOutboundQueue(q *autodrainingOutboundQueue) {
 		case elemsContainer := <-q.c:
 			elemsContainer.Lock()
 			for _, elem := range elemsContainer.elems {
-				transport.PutMessageBuffer(elem.buffer)
+				elem.packet.Release()
 				transport.PutOutboundElement(elem)
 			}
 			transport.PutOutboundElementsContainer(elemsContainer)

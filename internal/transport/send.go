@@ -42,6 +42,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/net/ipv4"
@@ -73,11 +74,10 @@ import (
  */
 
 type QueueOutboundElement struct {
-	buffer  *[MaxMessageSize]byte // slice holding the packet data
-	packet  []byte                // slice of "buffer" (always!)
-	nonce   uint64                // nonce for encryption
-	keypair *Keypair              // keypair for encryption
-	peer    *Peer                 // related peer
+	packet  *network.Packet // packet to send
+	nonce   uint64          // nonce for encryption
+	keypair *Keypair        // keypair for encryption
+	peer    *Peer           // related peer
 }
 
 type QueueOutboundElementsContainer struct {
@@ -87,7 +87,7 @@ type QueueOutboundElementsContainer struct {
 
 func (transport *Transport) NewOutboundElement() *QueueOutboundElement {
 	elem := transport.GetOutboundElement()
-	elem.buffer = transport.GetMessageBuffer()
+	elem.packet = network.NewPacket()
 	elem.nonce = 0
 	// keypair and peer were cleared (if necessary) by clearPointers.
 	return elem
@@ -98,7 +98,6 @@ func (transport *Transport) NewOutboundElement() *QueueOutboundElement {
 // avoids accidentally keeping other objects around unnecessarily.
 // It also reduces the possible collateral damage from use-after-free bugs.
 func (elem *QueueOutboundElement) clearPointers() {
-	elem.buffer = nil
 	elem.packet = nil
 	elem.keypair = nil
 	elem.peer = nil
@@ -115,7 +114,7 @@ func (peer *Peer) SendKeepalive() error {
 		case peer.queue.staged <- elemsContainer:
 			peer.transport.logger.Debug("Sending keepalive packet", slog.String("peer", peer.String()))
 		default:
-			peer.transport.PutMessageBuffer(elem.buffer)
+			elem.packet.Release()
 			peer.transport.PutOutboundElement(elem)
 			peer.transport.PutOutboundElementsContainer(elemsContainer)
 		}
@@ -226,8 +225,9 @@ func (transport *Transport) SendHandshakeCookie(initiatingElem *QueueHandshakeEl
 
 	logger.Debug("Sending cookie response for denied handshake message")
 
-	sender := binary.LittleEndian.Uint32(initiatingElem.packet[4:8])
-	reply, err := transport.cookieChecker.CreateReply(initiatingElem.packet, sender, initiatingElem.endpoint.DstToBytes())
+	packetBuf := initiatingElem.packet.Bytes()
+	sender := binary.LittleEndian.Uint32(packetBuf[4:8])
+	reply, err := transport.cookieChecker.CreateReply(packetBuf, sender, initiatingElem.endpoint.DstToBytes())
 	if err != nil {
 		logger.Warn("Failed to create cookie reply", slog.Any("error", err))
 		return err
@@ -267,22 +267,20 @@ func (transport *Transport) RoutineReadFromNIC() {
 		batchSize   = transport.BatchSize()
 		readErr     error
 		elems       = make([]*QueueOutboundElement, batchSize)
-		bufs        = make([][]byte, batchSize)
+		packets     = make([]*network.Packet, batchSize)
 		elemsByPeer = make(map[*Peer]*QueueOutboundElementsContainer, batchSize)
 		count       int
-		sizes       = make([]int, batchSize)
 		offset      = MessageTransportHeaderSize
 	)
 
 	for i := range elems {
 		elems[i] = transport.NewOutboundElement()
-		bufs[i] = elems[i].buffer[:]
+		packets[i] = elems[i].packet
 	}
-
 	defer func() {
 		for _, elem := range elems {
 			if elem != nil {
-				transport.PutMessageBuffer(elem.buffer)
+				elem.packet.Release()
 				transport.PutOutboundElement(elem)
 			}
 		}
@@ -290,23 +288,23 @@ func (transport *Transport) RoutineReadFromNIC() {
 
 	for {
 		// read packets
-		count, readErr = transport.nic.nic.Read(transport.ctx, bufs, sizes, offset)
+		count, readErr = transport.nic.nic.Read(transport.ctx, packets, offset)
 		for i := 0; i < count; i++ {
-			if sizes[i] < 1 {
+			if packets[i].Size < 1 {
 				continue
 			}
 
 			elem := elems[i]
-			elem.packet = bufs[i][offset : offset+sizes[i]]
 
 			// lookup peer
 			var peer *Peer
-			switch elem.packet[0] >> 4 {
+			packetBuf := elem.packet.Bytes()
+			switch packetBuf[0] >> 4 {
 			case 4:
-				if len(elem.packet) < ipv4.HeaderLen {
+				if elem.packet.Size < ipv4.HeaderLen {
 					continue
 				}
-				dst := elem.packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
+				dst := packetBuf[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
 				peer = transport.allowedips.Lookup(dst)
 				if peer == nil {
 					dstAddr, _ := netip.AddrFromSlice(dst)
@@ -316,10 +314,10 @@ func (transport *Transport) RoutineReadFromNIC() {
 				}
 
 			case 6:
-				if len(elem.packet) < ipv6.HeaderLen {
+				if elem.packet.Size < ipv6.HeaderLen {
 					continue
 				}
-				dst := elem.packet[IPv6offsetDst : IPv6offsetDst+net.IPv6len]
+				dst := packetBuf[IPv6offsetDst : IPv6offsetDst+net.IPv6len]
 				peer = transport.allowedips.Lookup(dst)
 				if peer == nil {
 					dstAddr, _ := netip.AddrFromSlice(dst)
@@ -339,7 +337,7 @@ func (transport *Transport) RoutineReadFromNIC() {
 			}
 			elemsForPeer.elems = append(elemsForPeer.elems, elem)
 			elems[i] = transport.NewOutboundElement()
-			bufs[i] = elems[i].buffer[:]
+			packets[i] = elems[i].packet
 		}
 
 		for peer, elemsForPeer := range elemsByPeer {
@@ -352,7 +350,7 @@ func (transport *Transport) RoutineReadFromNIC() {
 				}
 			} else {
 				for _, elem := range elemsForPeer.elems {
-					transport.PutMessageBuffer(elem.buffer)
+					elem.packet.Release()
 					transport.PutOutboundElement(elem)
 				}
 				transport.PutOutboundElementsContainer(elemsForPeer)
@@ -382,7 +380,7 @@ func (peer *Peer) StagePackets(elems *QueueOutboundElementsContainer) {
 		select {
 		case tooOld := <-peer.queue.staged:
 			for _, elem := range tooOld.elems {
-				peer.transport.PutMessageBuffer(elem.buffer)
+				elem.packet.Release()
 				peer.transport.PutOutboundElement(elem)
 			}
 			peer.transport.PutOutboundElementsContainer(tooOld)
@@ -444,7 +442,7 @@ top:
 				peer.transport.queue.encryption.c <- elemsContainer
 			} else {
 				for _, elem := range elemsContainer.elems {
-					peer.transport.PutMessageBuffer(elem.buffer)
+					elem.packet.Release()
 					peer.transport.PutOutboundElement(elem)
 				}
 				peer.transport.PutOutboundElementsContainer(elemsContainer)
@@ -464,7 +462,7 @@ func (peer *Peer) FlushStagedPackets() {
 		select {
 		case elemsContainer := <-peer.queue.staged:
 			for _, elem := range elemsContainer.elems {
-				peer.transport.PutMessageBuffer(elem.buffer)
+				elem.packet.Release()
 				peer.transport.PutOutboundElement(elem)
 			}
 			peer.transport.PutOutboundElementsContainer(elemsContainer)
@@ -506,7 +504,7 @@ func (transport *Transport) RoutineEncryption(id int) {
 	for elemsContainer := range transport.queue.encryption.c {
 		for _, elem := range elemsContainer.elems {
 			// populate header fields
-			header := elem.buffer[:MessageTransportHeaderSize]
+			header := elem.packet.Buf[:MessageTransportHeaderSize]
 
 			fieldType := header[0:4]
 			fieldReceiver := header[4:8]
@@ -517,18 +515,21 @@ func (transport *Transport) RoutineEncryption(id int) {
 			binary.LittleEndian.PutUint64(fieldNonce, elem.nonce)
 
 			// pad content to multiple of 16
-			paddingSize := calculatePaddingSize(len(elem.packet), int(transport.nic.mtu.Load()))
-			elem.packet = append(elem.packet, paddingZeros[:paddingSize]...)
+			paddingSize := calculatePaddingSize(elem.packet.Size, int(transport.nic.mtu.Load()))
+			copy(elem.packet.Buf[elem.packet.Offset+elem.packet.Size:], paddingZeros[:paddingSize])
+			elem.packet.Size += paddingSize
 
 			// encrypt content and release to consumer
 
 			binary.LittleEndian.PutUint64(nonce[4:], elem.nonce)
-			elem.packet = elem.keypair.send.Seal(
+
+			elem.packet.Size = len(elem.keypair.send.Seal(
 				header,
 				nonce[:],
-				elem.packet,
+				elem.packet.Bytes(),
 				nil,
-			)
+			))
+			elem.packet.Offset = 0
 		}
 		elemsContainer.Unlock()
 	}
@@ -560,7 +561,7 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 			// that we never accidentally keep timers alive longer than necessary.
 			elemsContainer.Lock()
 			for _, elem := range elemsContainer.elems {
-				transport.PutMessageBuffer(elem.buffer)
+				elem.packet.Release()
 				transport.PutOutboundElement(elem)
 			}
 			continue
@@ -568,10 +569,10 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 		dataSent := false
 		elemsContainer.Lock()
 		for _, elem := range elemsContainer.elems {
-			if len(elem.packet) != MessageKeepaliveSize {
+			if elem.packet.Size != MessageKeepaliveSize {
 				dataSent = true
 			}
-			bufs = append(bufs, elem.packet)
+			bufs = append(bufs, elem.packet.Bytes())
 		}
 
 		peer.timersAnyAuthenticatedPacketTraversal()
@@ -582,7 +583,7 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 			peer.timersDataSent()
 		}
 		for _, elem := range elemsContainer.elems {
-			transport.PutMessageBuffer(elem.buffer)
+			elem.packet.Release()
 			transport.PutOutboundElement(elem)
 		}
 		transport.PutOutboundElementsContainer(elemsContainer)

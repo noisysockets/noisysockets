@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/neilotoole/slogt"
+	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/types"
 	"github.com/stretchr/testify/require"
@@ -223,7 +224,7 @@ func (d *discardingInterface) Close() error {
 	return nil
 }
 
-func (d *discardingInterface) Read(ctx context.Context, bufs [][]byte, sizes []int, offset int) (int, error) {
+func (d *discardingInterface) Read(ctx context.Context, packets []*network.Packet, offset int) (int, error) {
 	if d.closed {
 		return 0, net.ErrClosed
 	}
@@ -233,7 +234,7 @@ func (d *discardingInterface) Read(ctx context.Context, bufs [][]byte, sizes []i
 	return 0, nil
 }
 
-func (discardingInterface) Write(ctx context.Context, bufs [][]byte, sizes []int, offset int) (int, error) {
+func (discardingInterface) Write(ctx context.Context, packets []*network.Packet) (int, error) {
 	return 0, nil
 }
 

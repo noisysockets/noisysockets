@@ -42,6 +42,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/net/ipv4"
@@ -50,14 +51,12 @@ import (
 
 type QueueHandshakeElement struct {
 	msgType  uint32
-	packet   []byte
+	packet   *network.Packet
 	endpoint conn.Endpoint
-	buffer   *[MaxMessageSize]byte
 }
 
 type QueueInboundElement struct {
-	buffer   *[MaxMessageSize]byte
-	packet   []byte
+	packet   *network.Packet
 	counter  uint64
 	keypair  *Keypair
 	endpoint conn.Endpoint
@@ -73,7 +72,6 @@ type QueueInboundElementsContainer struct {
 // avoids accidentally keeping other objects around unnecessarily.
 // It also reduces the possible collateral damage from use-after-free bugs.
 func (elem *QueueInboundElement) clearPointers() {
-	elem.buffer = nil
 	elem.packet = nil
 	elem.keypair = nil
 	elem.endpoint = nil
@@ -116,7 +114,7 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 	// receive datagrams until conn is closed
 
 	var (
-		bufsArrs    = make([]*[MaxMessageSize]byte, maxBatchSize)
+		packets     = make([]*network.Packet, maxBatchSize)
 		bufs        = make([][]byte, maxBatchSize)
 		err         error
 		sizes       = make([]int, maxBatchSize)
@@ -126,16 +124,13 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 		elemsByPeer = make(map[*Peer]*QueueInboundElementsContainer, maxBatchSize)
 	)
 
-	for i := range bufsArrs {
-		bufsArrs[i] = transport.GetMessageBuffer()
-		bufs[i] = bufsArrs[i][:]
+	for i := range packets {
+		packets[i] = network.NewPacket()
+		bufs[i] = packets[i].Buf[:]
 	}
-
 	defer func() {
-		for i := 0; i < maxBatchSize; i++ {
-			if bufsArrs[i] != nil {
-				transport.PutMessageBuffer(bufsArrs[i])
-			}
+		for _, pkt := range packets {
+			pkt.Release()
 		}
 	}()
 
@@ -167,14 +162,17 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 
 		// handle each packet in the batch
 		for i, size := range sizes[:count] {
+			packets[i].Size = size
+
 			if size < MinMessageSize {
 				continue
 			}
 
 			// check size of packet
 
-			packet := bufsArrs[i][:size]
-			msgType := binary.LittleEndian.Uint32(packet[:4])
+			packet := packets[i]
+			buf := packet.Bytes()
+			msgType := binary.LittleEndian.Uint32(buf[:4])
 
 			switch msgType {
 
@@ -184,14 +182,14 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 
 				// check size
 
-				if len(packet) < MessageTransportSize {
+				if packet.Size < MessageTransportSize {
 					continue
 				}
 
 				// lookup key pair
 
 				receiver := binary.LittleEndian.Uint32(
-					packet[MessageTransportOffsetReceiver:MessageTransportOffsetCounter],
+					buf[MessageTransportOffsetReceiver:MessageTransportOffsetCounter],
 				)
 				value := transport.indexTable.Lookup(receiver)
 				keypair := value.keypair
@@ -208,8 +206,7 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 				// create work element
 				peer := value.peer
 				elem := transport.GetInboundElement()
-				elem.packet = packet
-				elem.buffer = bufsArrs[i]
+				elem.packet = packets[i]
 				elem.keypair = keypair
 				elem.endpoint = endpoints[i]
 				elem.counter = 0
@@ -221,24 +218,24 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 					elemsByPeer[peer] = elemsForPeer
 				}
 				elemsForPeer.elems = append(elemsForPeer.elems, elem)
-				bufsArrs[i] = transport.GetMessageBuffer()
-				bufs[i] = bufsArrs[i][:]
+				packets[i] = network.NewPacket()
+				bufs[i] = packets[i].Buf[:]
 				continue
 
 			// otherwise it is a fixed size & handshake related packet
 
 			case MessageInitiationType:
-				if len(packet) != MessageInitiationSize {
+				if packet.Size != MessageInitiationSize {
 					continue
 				}
 
 			case MessageResponseType:
-				if len(packet) != MessageResponseSize {
+				if packet.Size != MessageResponseSize {
 					continue
 				}
 
 			case MessageCookieReplyType:
-				if len(packet) != MessageCookieReplySize {
+				if packet.Size != MessageCookieReplySize {
 					continue
 				}
 
@@ -251,12 +248,11 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 			select {
 			case transport.queue.handshake.c <- QueueHandshakeElement{
 				msgType:  msgType,
-				buffer:   bufsArrs[i],
 				packet:   packet,
 				endpoint: endpoints[i],
 			}:
-				bufsArrs[i] = transport.GetMessageBuffer()
-				bufs[i] = bufsArrs[i][:]
+				packets[i] = network.NewPacket()
+				bufs[i] = packets[i].Buf[:]
 			default:
 			}
 		}
@@ -266,7 +262,7 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 				transport.queue.decryption.c <- elemsContainer
 			} else {
 				for _, elem := range elemsContainer.elems {
-					transport.PutMessageBuffer(elem.buffer)
+					elem.packet.Release()
 					transport.PutInboundElement(elem)
 				}
 				transport.PutInboundElementsContainer(elemsContainer)
@@ -285,22 +281,25 @@ func (transport *Transport) RoutineDecryption(id int) {
 	for elemsContainer := range transport.queue.decryption.c {
 		for _, elem := range elemsContainer.elems {
 			// split message into fields
-			counter := elem.packet[MessageTransportOffsetCounter:MessageTransportOffsetContent]
-			content := elem.packet[MessageTransportOffsetContent:]
+			packetBuf := elem.packet.Bytes()
+			counter := packetBuf[MessageTransportOffsetCounter:MessageTransportOffsetContent]
+			content := packetBuf[MessageTransportOffsetContent:]
 
 			// decrypt and release to consumer
 			var err error
 			elem.counter = binary.LittleEndian.Uint64(counter)
 			// copy counter to nonce
 			binary.LittleEndian.PutUint64(nonce[0x4:0xc], elem.counter)
-			elem.packet, err = elem.keypair.receive.Open(
+			unsealed, err := elem.keypair.receive.Open(
 				content[:0],
 				nonce[:],
 				content,
 				nil,
 			)
+			elem.packet.Size = len(unsealed)
+			elem.packet.Offset = MessageTransportOffsetContent
 			if err != nil {
-				elem.packet = nil
+				elem.packet.Size = 0
 			}
 		}
 		elemsContainer.Unlock()
@@ -330,7 +329,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 			// unmarshal packet
 
 			var reply MessageCookieReply
-			reader := bytes.NewReader(elem.packet)
+			reader := bytes.NewReader(elem.packet.Bytes())
 			err := binary.Read(reader, binary.LittleEndian, &reply)
 			if err != nil {
 				logger.Warn("Failed to decode cookie reply", slog.Any("error", err))
@@ -360,7 +359,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 
 			// check mac fields and maybe ratelimit
 
-			if !transport.cookieChecker.CheckMAC1(elem.packet) {
+			if !transport.cookieChecker.CheckMAC1(elem.packet.Bytes()) {
 				logger.Warn("Received packet with invalid mac1")
 				goto skip
 			}
@@ -371,7 +370,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 
 				// verify MAC2 field
 
-				if !transport.cookieChecker.CheckMAC2(elem.packet, elem.endpoint.DstToBytes()) {
+				if !transport.cookieChecker.CheckMAC2(elem.packet.Bytes(), elem.endpoint.DstToBytes()) {
 					if err := transport.SendHandshakeCookie(&elem); err != nil {
 						logger.Warn("Failed to send handshake cookie", slog.Any("error", err))
 					}
@@ -398,7 +397,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 			// unmarshal
 
 			var msg MessageInitiation
-			reader := bytes.NewReader(elem.packet)
+			reader := bytes.NewReader(elem.packet.Bytes())
 			err := binary.Read(reader, binary.LittleEndian, &msg)
 			if err != nil {
 				logger.Warn("Failed to decode initiation message", slog.Any("error", err))
@@ -422,7 +421,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 			peer.SetEndpoint(elem.endpoint)
 
 			logger.Debug("Received handshake initiation", slog.String("peer", peer.String()))
-			peer.rxBytes.Add(uint64(len(elem.packet)))
+			peer.rxBytes.Add(uint64(elem.packet.Size))
 
 			if err := peer.SendHandshakeResponse(); err != nil {
 				logger.Error("Failed to send handshake response", slog.Any("error", err))
@@ -434,7 +433,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 			// unmarshal
 
 			var msg MessageResponse
-			reader := bytes.NewReader(elem.packet)
+			reader := bytes.NewReader(elem.packet.Bytes())
 			err := binary.Read(reader, binary.LittleEndian, &msg)
 			if err != nil {
 				logger.Warn("Failed to decode response message", slog.Any("error", err))
@@ -453,7 +452,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 			peer.SetEndpoint(elem.endpoint)
 
 			logger.Debug("Received handshake response")
-			peer.rxBytes.Add(uint64(len(elem.packet)))
+			peer.rxBytes.Add(uint64(elem.packet.Size))
 
 			// update timers
 
@@ -479,7 +478,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 			logger.Debug("Handshake complete", slog.String("peer", peer.String()))
 		}
 	skip:
-		transport.PutMessageBuffer(elem.buffer)
+		elem.packet.Release()
 	}
 }
 
@@ -494,8 +493,7 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 	}()
 	logger.Debug("Routine: sequential receiver - started")
 
-	bufs := make([][]byte, 0, maxBatchSize)
-	sizes := make([]int, maxBatchSize)
+	packets := make([]*network.Packet, 0, maxBatchSize)
 
 	for elemsContainer := range peer.queue.inbound.c {
 		if elemsContainer == nil {
@@ -524,26 +522,27 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 					continue
 				}
 			}
-			rxBytesLen += uint64(len(elem.packet) + MinMessageSize)
+			rxBytesLen += uint64(elem.packet.Size + MinMessageSize)
 
-			if len(elem.packet) == 0 {
+			if elem.packet.Size == 0 {
 				logger.Debug("Receiving keepalive packet")
 				continue
 			}
 			dataPacketReceived = true
 
-			switch elem.packet[0] >> 4 {
+			packetBuf := elem.packet.Bytes()
+			switch packetBuf[0] >> 4 {
 			case 4:
-				if len(elem.packet) < ipv4.HeaderLen {
+				if elem.packet.Size < ipv4.HeaderLen {
 					continue
 				}
-				field := elem.packet[IPv4offsetTotalLength : IPv4offsetTotalLength+2]
+				field := packetBuf[IPv4offsetTotalLength : IPv4offsetTotalLength+2]
 				length := binary.BigEndian.Uint16(field)
-				if int(length) > len(elem.packet) || int(length) < ipv4.HeaderLen {
+				if int(length) > elem.packet.Size || int(length) < ipv4.HeaderLen {
 					continue
 				}
-				elem.packet = elem.packet[:length]
-				src := elem.packet[IPv4offsetSrc : IPv4offsetSrc+net.IPv4len]
+				elem.packet.Size = int(length)
+				src := packetBuf[IPv4offsetSrc : IPv4offsetSrc+net.IPv4len]
 				if transport.allowedips.Lookup(src) != peer {
 					srcAddr, _ := netip.AddrFromSlice(src)
 					logger.Warn("IPv4 packet with disallowed source address",
@@ -552,17 +551,17 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 				}
 
 			case 6:
-				if len(elem.packet) < ipv6.HeaderLen {
+				if elem.packet.Size < ipv6.HeaderLen {
 					continue
 				}
-				field := elem.packet[IPv6offsetPayloadLength : IPv6offsetPayloadLength+2]
+				field := packetBuf[IPv6offsetPayloadLength : IPv6offsetPayloadLength+2]
 				length := binary.BigEndian.Uint16(field)
 				length += ipv6.HeaderLen
-				if int(length) > len(elem.packet) {
+				if int(length) > elem.packet.Size {
 					continue
 				}
-				elem.packet = elem.packet[:length]
-				src := elem.packet[IPv6offsetSrc : IPv6offsetSrc+net.IPv6len]
+				elem.packet.Size = int(length)
+				src := packetBuf[IPv6offsetSrc : IPv6offsetSrc+net.IPv6len]
 				if transport.allowedips.Lookup(src) != peer {
 					srcAddr, _ := netip.AddrFromSlice(src)
 					logger.Warn("IPv6 packet with disallowed source address",
@@ -575,9 +574,7 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 				continue
 			}
 
-			buf := elem.buffer[:MessageTransportOffsetContent+len(elem.packet)]
-			bufs = append(bufs, buf)
-			sizes = append(sizes, len(elem.packet))
+			packets = append(packets, elem.packet)
 		}
 
 		peer.rxBytes.Add(rxBytesLen)
@@ -592,18 +589,17 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 		if dataPacketReceived {
 			peer.timersDataReceived()
 		}
-		if len(bufs) > 0 {
-			_, err := transport.nic.nic.Write(transport.ctx, bufs, sizes, MessageTransportOffsetContent)
+		if len(packets) > 0 {
+			_, err := transport.nic.nic.Write(transport.ctx, packets)
 			if err != nil && !transport.isClosed() {
 				logger.Error("Failed to write packets to network interface", slog.Any("error", err))
 			}
 		}
 		for _, elem := range elemsContainer.elems {
-			transport.PutMessageBuffer(elem.buffer)
+			elem.packet.Release()
 			transport.PutInboundElement(elem)
 		}
-		bufs = bufs[:0]
-		sizes = sizes[:0]
+		packets = packets[:0]
 		transport.PutInboundElementsContainer(elemsContainer)
 	}
 }
