@@ -32,7 +32,6 @@
 package transport
 
 import (
-	"container/list"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -83,7 +82,6 @@ type Peer struct {
 	}
 
 	cookieGenerator   CookieGenerator
-	trieEntries       list.List
 	keepAliveInterval atomic.Uint32
 }
 

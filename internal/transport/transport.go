@@ -40,6 +40,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/noisysockets/netutil/triemap"
 	"github.com/noisysockets/netutil/waitpool"
 	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets/internal/conn"
@@ -94,7 +95,7 @@ type Transport struct {
 		limiter        ratelimiter.Ratelimiter
 	}
 
-	allowedips    AllowedIPs
+	allowedips    *triemap.TrieMap[*Peer]
 	indexTable    IndexTable
 	cookieChecker CookieChecker
 
@@ -168,7 +169,7 @@ func (transport *Transport) isUp() bool {
 // Must hold transport.peers.Lock()
 func removePeerLocked(transport *Transport, peer *Peer, key types.NoisePublicKey) {
 	// stop routing and processing of packets
-	transport.allowedips.RemoveByPeer(peer)
+	transport.allowedips.RemoveValue(peer)
 	peer.Stop()
 
 	// remove from peer map
@@ -329,6 +330,7 @@ func NewTransport(ctx context.Context, logger *slog.Logger, nic network.Interfac
 	t.nic.nic = nic
 	t.nic.mtu.Store(int32(t.nic.nic.MTU()))
 	t.peers.keyMap = make(map[types.NoisePublicKey]*Peer)
+	t.allowedips = triemap.New[*Peer]()
 	t.rate.limiter.Init()
 	t.indexTable.Init()
 

@@ -302,12 +302,15 @@ func (transport *Transport) RoutineReadFromNIC() {
 			switch packetBuf[0] >> 4 {
 			case 4:
 				if elem.packet.Size < ipv4.HeaderLen {
+					transport.logger.Warn("Received outbound IPv4 packet with invalid size")
+
 					continue
 				}
-				dst := packetBuf[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
-				peer = transport.allowedips.Lookup(dst)
-				if peer == nil {
-					dstAddr, _ := netip.AddrFromSlice(dst)
+
+				var ok bool
+				dstAddr := netip.AddrFrom4([4]byte(packetBuf[IPv4offsetDst : IPv4offsetDst+net.IPv4len]))
+				peer, ok = transport.allowedips.Get(dstAddr)
+				if !ok {
 					transport.logger.Warn("Received outbound IPv4 packet for unknown peer",
 						slog.String("dstAddr", dstAddr.String()))
 					continue
@@ -315,12 +318,15 @@ func (transport *Transport) RoutineReadFromNIC() {
 
 			case 6:
 				if elem.packet.Size < ipv6.HeaderLen {
+					transport.logger.Warn("Received outbound IPv6 packet with invalid size")
+
 					continue
 				}
-				dst := packetBuf[IPv6offsetDst : IPv6offsetDst+net.IPv6len]
-				peer = transport.allowedips.Lookup(dst)
-				if peer == nil {
-					dstAddr, _ := netip.AddrFromSlice(dst)
+
+				var ok bool
+				dstAddr := netip.AddrFrom16([16]byte(packetBuf[IPv6offsetDst : IPv6offsetDst+net.IPv6len]))
+				peer, ok = transport.allowedips.Get(dstAddr)
+				if !ok {
 					transport.logger.Warn("Received outbound IPv6 packet for unknown peer",
 						slog.String("dstAddr", dstAddr.String()))
 					continue

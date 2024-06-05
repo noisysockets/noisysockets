@@ -542,9 +542,8 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 					continue
 				}
 				elem.packet.Size = int(length)
-				src := packetBuf[IPv4offsetSrc : IPv4offsetSrc+net.IPv4len]
-				if transport.allowedips.Lookup(src) != peer {
-					srcAddr, _ := netip.AddrFromSlice(src)
+				srcAddr := netip.AddrFrom4([4]byte(packetBuf[IPv4offsetSrc : IPv4offsetSrc+net.IPv4len]))
+				if peerForSrc, ok := transport.allowedips.Get(srcAddr); !ok || peerForSrc != peer {
 					logger.Warn("IPv4 packet with disallowed source address",
 						slog.String("srcAddr", srcAddr.String()))
 					continue
@@ -561,9 +560,8 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 					continue
 				}
 				elem.packet.Size = int(length)
-				src := packetBuf[IPv6offsetSrc : IPv6offsetSrc+net.IPv6len]
-				if transport.allowedips.Lookup(src) != peer {
-					srcAddr, _ := netip.AddrFromSlice(src)
+				srcAddr := netip.AddrFrom16([16]byte(packetBuf[IPv6offsetSrc : IPv6offsetSrc+net.IPv6len]))
+				if peerForSrc, ok := transport.allowedips.Get(srcAddr); !ok || peerForSrc != peer {
 					logger.Warn("IPv6 packet with disallowed source address",
 						slog.String("srcAddr", srcAddr.String()))
 					continue
