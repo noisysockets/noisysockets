@@ -20,6 +20,7 @@ import (
 	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets/config"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
+	"github.com/noisysockets/noisysockets/internal/transport"
 	"github.com/noisysockets/noisysockets/types"
 	"github.com/noisysockets/noisysockets/util"
 	"github.com/noisysockets/resolver"
@@ -82,10 +83,11 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 	}
 
 	netConf := network.UserspaceNetworkConfig{
-		Hostname:   conf.Name,
-		Domain:     domain,
-		Addresses:  addrPrefixes,
-		PacketPool: packetPool,
+		Hostname:          conf.Name,
+		Domain:            domain,
+		Addresses:         addrPrefixes,
+		PacketPool:        packetPool,
+		PacketWriteOffset: int(transport.MessageTransportHeaderSize),
 		ResolverFactory: func(dialContext network.DialContextFunc) (resolver.Resolver, error) {
 			relativeConf := &resolver.RelativeResolverConfig{
 				Search: []string{domain, "."},

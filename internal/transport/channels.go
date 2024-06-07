@@ -120,6 +120,7 @@ func (transport *Transport) flushInboundQueue(q *autodrainingInboundQueue) {
 			elemsContainer.Lock()
 			for _, elem := range elemsContainer.elems {
 				elem.packet.Release()
+				elem.packet = nil
 				transport.PutInboundElement(elem)
 			}
 			transport.PutInboundElementsContainer(elemsContainer)
@@ -153,6 +154,7 @@ func (transport *Transport) flushOutboundQueue(q *autodrainingOutboundQueue) {
 			elemsContainer.Lock()
 			for _, elem := range elemsContainer.elems {
 				elem.packet.Release()
+				elem.packet = nil
 				transport.PutOutboundElement(elem)
 			}
 			transport.PutOutboundElementsContainer(elemsContainer)
