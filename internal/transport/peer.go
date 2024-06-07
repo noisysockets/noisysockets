@@ -295,3 +295,7 @@ func (peer *Peer) SetKeepAliveInterval(interval time.Duration) {
 func (peer *Peer) AddAllowedIP(prefix netip.Prefix) {
 	peer.transport.allowedips.Insert(prefix, peer)
 }
+
+func (peer *Peer) RemoveAllowedIP(prefix netip.Prefix) {
+	peer.transport.allowedips.Remove(prefix)
+}

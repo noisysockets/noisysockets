@@ -35,6 +35,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -391,6 +392,15 @@ func (transport *Transport) LookupPeer(pk types.NoisePublicKey) *Peer {
 	defer transport.peers.RUnlock()
 
 	return transport.peers.keyMap[pk]
+}
+
+// LookupPeerByAddress returns the peer associated with the given address.
+func (transport *Transport) LookupPeerByAddress(addr netip.Addr) *Peer {
+	transport.peers.RLock()
+	defer transport.peers.RUnlock()
+
+	peer, _ := transport.allowedips.Get(addr)
+	return peer
 }
 
 func (transport *Transport) RemovePeer(pk types.NoisePublicKey) {

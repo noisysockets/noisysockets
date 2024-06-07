@@ -7,7 +7,7 @@ require (
 	github.com/neilotoole/slogt v1.1.0
 	github.com/noisysockets/netutil v0.7.0
 	github.com/noisysockets/network v0.16.0
-	github.com/noisysockets/resolver v0.10.0
+	github.com/noisysockets/resolver v0.12.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/crypto v0.24.0
 	golang.org/x/net v0.26.0
@@ -28,5 +28,5 @@ require (
 	golang.org/x/mod v0.18.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	golang.org/x/tools v0.21.0 // indirect
+	golang.org/x/tools v0.22.0 // indirect
 )

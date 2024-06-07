@@ -442,8 +442,7 @@ func TestAddAndRemovePeer(t *testing.T) {
 
 	t.Log("Removing server 1 and making request")
 
-	err = net.RemovePeer(server1PrivateKey.Public())
-	require.NoError(t, err)
+	net.RemovePeer(server1PrivateKey.Public())
 
 	// We expect this to fail so keep a short timeout.
 	ctx, cancel = context.WithTimeout(context.Background(), time.Second)

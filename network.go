@@ -13,19 +13,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	stdnet "net"
 	"net/netip"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/miekg/dns"
 	"github.com/noisysockets/netutil/ptr"
 	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets/config"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
-	"github.com/noisysockets/noisysockets/internal/conn"
-	"github.com/noisysockets/noisysockets/internal/transport"
 	"github.com/noisysockets/noisysockets/types"
 	"github.com/noisysockets/noisysockets/util"
 	"github.com/noisysockets/resolver"
@@ -36,12 +30,9 @@ var _ network.Network = (*NoisySocketsNetwork)(nil)
 // NoisySocketsNetwork is a wrapper around a userspace WireGuard peer.
 type NoisySocketsNetwork struct {
 	*network.UserspaceNetwork
-	logger            *slog.Logger
-	packetPool        *network.PacketPool
-	transport         *transport.Transport
-	peersByName       map[string]types.NoisePublicKey
-	nameForPeer       map[types.NoisePublicKey]string
-	peerNamesResolver *peerResolver
+	logger     *slog.Logger
+	packetPool *network.PacketPool
+	nic        *NoisySocketsInterface
 }
 
 // OpenNetwork creates a new network using the provided configuration.
@@ -81,15 +72,14 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 		domain = dns.Fqdn(conf.DNS.Domain)
 	}
 
-	peerNamesResolver := newPeerResolver(domain)
-
-	// Add our own addresses to the resolver.
-	if conf.Name != "" {
-		peerNamesResolver.addPeer(conf.Name, addrs...)
-	}
-
-	// Unbounded packet pool.
+	// Unbounded packet pool, TODO: make configurable.
 	packetPool := network.NewPacketPool(0, false)
+
+	ctx := context.Background()
+	nic, err := NewNoisySocketsInterface(ctx, logger, *conf, packetPool)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create interface: %w", err)
+	}
 
 	netConf := network.UserspaceNetworkConfig{
 		Hostname:   conf.Name,
@@ -125,11 +115,9 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 					))
 				}
 
-				res = resolver.Sequential(resolver.PreferredAddress(peerNamesResolver, &resolver.PreferredAddressResolverConfig{
-					DialContext: resolver.DialContextFunc(dialContext),
-				}), resolver.Retry(resolver.RoundRobin(resolvers...), nil))
+				res = resolver.Sequential(nic.peerNamesResolver, resolver.Retry(resolver.RoundRobin(resolvers...), nil))
 			} else {
-				res = peerNamesResolver
+				res = nic.peerNamesResolver
 			}
 
 			return resolver.Sequential(resolver.Literal(), resolver.Relative(res, relativeConf)), nil
@@ -137,60 +125,18 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 	}
 
 	net := &NoisySocketsNetwork{
-		logger:            logger,
-		packetPool:        packetPool,
-		peersByName:       make(map[string]types.NoisePublicKey),
-		nameForPeer:       make(map[types.NoisePublicKey]string),
-		peerNamesResolver: peerNamesResolver,
+		logger:     logger,
+		packetPool: packetPool,
+		nic:        nic,
 	}
 
-	mtu := conf.MTU
-	if mtu == 0 {
-		mtu = transport.DefaultMTU
-	}
-
-	nicA, nicB := network.Pipe(&network.PipeConfiguration{
-		MTU:       &mtu,
-		BatchSize: ptr.To(conn.IdealBatchSize),
-	})
-
-	ctx := context.Background()
-	net.UserspaceNetwork, err = network.Userspace(ctx, logger, nicA, netConf)
+	net.UserspaceNetwork, err = network.Userspace(ctx, logger, net.nic, netConf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create userspace network: %w", err)
 	}
 
-	// TODO: Refactor the transport to directly implement network.Interface.
-	// Will then be able to get rid of the pipe (and the additional copy).
-	net.transport = transport.NewTransport(ctx, logger, nicB, conn.NewStdNetBind(), packetPool)
-
-	net.transport.SetPrivateKey(privateKey)
-
-	if err := net.transport.UpdatePort(conf.ListenPort); err != nil {
-		return nil, fmt.Errorf("failed to update port: %w", err)
-	}
-
-	logger.Debug("Adding peers")
-
-	for _, peerConf := range conf.Peers {
-		if err := net.AddPeer(peerConf); err != nil {
-			return nil, fmt.Errorf("could not add peer %s: %w", peerConf.Name, err)
-		}
-	}
-
-	logger.Debug("Adding routes")
-
-	for _, routeConf := range conf.Routes {
-		if err := net.AddRoute(&routeConf); err != nil {
-			return nil, fmt.Errorf("could not add route: %w", err)
-		}
-	}
-
-	logger.Debug("Bringing transport up")
-
-	if err := net.transport.Up(); err != nil {
-		return nil, fmt.Errorf("failed to bring transport up: %w", err)
-	}
+	// Lazily set the dial context function for the peer names resolver.
+	net.nic.dialContext = net.DialContext
 
 	return net, nil
 }
@@ -198,15 +144,12 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 // Close closes the network.
 func (net *NoisySocketsNetwork) Close() error {
 	net.logger.Debug("Closing network")
-
 	if err := net.UserspaceNetwork.Close(); err != nil {
 		return err
 	}
 
-	net.logger.Debug("Closing transport")
-
-	// The pipe will be closed internally by the transport.
-	if err := net.transport.Close(); err != nil {
+	net.logger.Debug("Closing interface")
+	if err := net.nic.Close(); err != nil {
 		return err
 	}
 
@@ -215,7 +158,7 @@ func (net *NoisySocketsNetwork) Close() error {
 
 // ListenPort returns the port that wireguard is listening on.
 func (net *NoisySocketsNetwork) ListenPort() uint16 {
-	return net.transport.GetPort()
+	return net.nic.ListenPort()
 }
 
 // BufferedPacketsCount returns the number of buffered packets.
@@ -226,119 +169,20 @@ func (net *NoisySocketsNetwork) BufferedPacketsCount() int {
 
 // AddPeer adds a wireguard peer to the network.
 func (net *NoisySocketsNetwork) AddPeer(peerConf latestconfig.PeerConfig) error {
-	var publicKey types.NoisePublicKey
-	if err := publicKey.UnmarshalText([]byte(peerConf.PublicKey)); err != nil {
-		return fmt.Errorf("failed to parse peer public key: %w", err)
-	}
-
-	net.logger.Debug("Adding peer",
-		slog.String("name", peerConf.Name),
-		slog.String("peer", publicKey.DisplayString()),
-		slog.String("ips", strings.Join(peerConf.IPs, ",")),
-		slog.String("endpoint", peerConf.Endpoint))
-
-	peer, err := net.transport.NewPeer(publicKey)
-	if err != nil {
-		return fmt.Errorf("failed to create peer: %w", err)
-	}
-
-	// Regularly send keepalives to the peer to keep NAT mappings valid.
-	// This could be configurable but I think it's a good default to avoid footguns.
-	peer.SetKeepAliveInterval(25 * time.Second) // TODO: make this configurable?
-
-	peerAddrs, err := util.ParseAddrList(peerConf.IPs)
-	if err != nil {
-		net.transport.RemovePeer(publicKey)
-		return fmt.Errorf("failed to parse peer addresses: %w", err)
-	}
-
-	// Set the peer's allowed IPs.
-	for _, addr := range peerAddrs {
-		peer.AddAllowedIP(netip.PrefixFrom(addr, 8*len(addr.AsSlice())))
-	}
-
-	if peerConf.Endpoint != "" {
-		peerEndpointHost, peerEndpointPortStr, err := stdnet.SplitHostPort(peerConf.Endpoint)
-		if err != nil {
-			net.transport.RemovePeer(publicKey)
-			return fmt.Errorf("failed to parse peer endpoint: %w", err)
-		}
-
-		peerEndpointAddrs, err := stdnet.LookupHost(peerEndpointHost)
-		if err != nil {
-			net.transport.RemovePeer(publicKey)
-			return fmt.Errorf("failed to resolve peer address: %w", err)
-		}
-
-		peerEndpointPort, err := strconv.Atoi(peerEndpointPortStr)
-		if err != nil {
-			net.transport.RemovePeer(publicKey)
-			return fmt.Errorf("failed to parse peer port: %w", err)
-		}
-
-		// TODO: try all resolved addresses until one works?
-		peer.SetEndpoint(&conn.StdNetEndpoint{
-			AddrPort: netip.AddrPortFrom(netip.MustParseAddr(peerEndpointAddrs[0]), uint16(peerEndpointPort)),
-		})
-
-		peer.Start()
-
-		// Send an initial keepalive so we can complete the handshake ASAP.
-		if err := peer.SendKeepalive(); err != nil {
-			net.logger.Warn("Failed to send initial keepalive", "peer", peerConf.Name, "error", err)
-		}
-	}
-
-	if peerConf.Name != "" {
-		net.peersByName[peerConf.Name] = publicKey
-		net.nameForPeer[publicKey] = peerConf.Name
-
-		net.peerNamesResolver.addPeer(peerConf.Name, peerAddrs...)
-	}
-
-	return nil
+	return net.nic.AddPeer(peerConf)
 }
 
 // RemovePeer removes a wireguard peer from the network.
-func (net *NoisySocketsNetwork) RemovePeer(publicKey types.NoisePublicKey) error {
-	net.logger.Debug("Removing peer", slog.String("peer", publicKey.DisplayString()))
-
-	net.transport.RemovePeer(publicKey)
-
-	delete(net.nameForPeer, publicKey)
-	if name, ok := net.nameForPeer[publicKey]; ok {
-		net.peerNamesResolver.removePeer(name)
-		delete(net.peersByName, name)
-	}
-
-	return nil
+func (net *NoisySocketsNetwork) RemovePeer(publicKey types.NoisePublicKey) {
+	net.nic.RemovePeer(publicKey)
 }
 
 // AddRoute adds a route to the network.
-func (net *NoisySocketsNetwork) AddRoute(routeConf *latestconfig.RouteConfig) error {
-	net.logger.Debug("Adding route",
-		slog.String("destination", routeConf.Destination),
-		slog.String("via", routeConf.Via))
+func (net *NoisySocketsNetwork) AddRoute(routeConf latestconfig.RouteConfig) error {
+	return net.nic.AddRoute(context.Background(), routeConf)
+}
 
-	pk, ok := net.peersByName[routeConf.Via]
-	if !ok {
-		// Assume the peer name is actually a public key.
-		if err := pk.UnmarshalText([]byte(routeConf.Via)); err != nil {
-			return fmt.Errorf("failed to parse peer name: %w: %w", err, ErrUnknownPeer)
-		}
-	}
-
-	peer := net.transport.LookupPeer(pk)
-	if peer == nil {
-		return ErrUnknownPeer
-	}
-
-	destination, err := netip.ParsePrefix(routeConf.Destination)
-	if err != nil {
-		return fmt.Errorf("failed to parse route destination: %w", err)
-	}
-
-	peer.AddAllowedIP(destination)
-
-	return nil
+// RemoveRoute removes a route from the network.
+func (net *NoisySocketsNetwork) RemoveRoute(destination netip.Prefix) error {
+	return net.nic.RemoveRoute(destination)
 }
