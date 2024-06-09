@@ -129,8 +129,9 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 		bufs[i] = packets[i].Buf[:]
 	}
 	defer func() {
-		for _, pkt := range packets {
+		for i, pkt := range packets {
 			pkt.Release()
+			packets[i] = nil
 		}
 	}()
 
@@ -263,6 +264,7 @@ func (transport *Transport) RoutineReceiveIncoming(maxBatchSize int, recv conn.R
 			} else {
 				for _, elem := range elemsContainer.elems {
 					elem.packet.Release()
+					elem.packet = nil
 					transport.PutInboundElement(elem)
 				}
 				transport.PutInboundElementsContainer(elemsContainer)
@@ -479,6 +481,7 @@ func (transport *Transport) RoutineHandshake(id int) {
 		}
 	skip:
 		elem.packet.Release()
+		elem.packet = nil
 	}
 }
 
@@ -594,7 +597,7 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 			}
 		}
 		for _, elem := range elemsContainer.elems {
-			elem.packet.Release()
+			elem.packet = nil // ownership transferred to nic.Write
 			transport.PutInboundElement(elem)
 		}
 		packets = packets[:0]

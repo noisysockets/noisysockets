@@ -87,7 +87,6 @@ type QueueOutboundElementsContainer struct {
 
 func (transport *Transport) NewOutboundElement() *QueueOutboundElement {
 	elem := transport.GetOutboundElement()
-	elem.packet = transport.pool.packets.Borrow()
 	elem.nonce = 0
 	// keypair and peer were cleared (if necessary) by clearPointers.
 	return elem
@@ -108,6 +107,7 @@ func (elem *QueueOutboundElement) clearPointers() {
 func (peer *Peer) SendKeepalive() error {
 	if len(peer.queue.staged) == 0 && peer.isRunning.Load() {
 		elem := peer.transport.NewOutboundElement()
+		elem.packet = peer.transport.pool.packets.Borrow()
 		elemsContainer := peer.transport.GetOutboundElementsContainer()
 		elemsContainer.elems = append(elemsContainer.elems, elem)
 		select {
@@ -115,6 +115,7 @@ func (peer *Peer) SendKeepalive() error {
 			peer.transport.logger.Debug("Sending keepalive packet", slog.String("peer", peer.String()))
 		default:
 			elem.packet.Release()
+			elem.packet = nil
 			peer.transport.PutOutboundElement(elem)
 			peer.transport.PutOutboundElementsContainer(elemsContainer)
 		}
@@ -267,20 +268,21 @@ func (transport *Transport) RoutineReadFromNIC() {
 		batchSize   = transport.BatchSize()
 		readErr     error
 		elems       = make([]*QueueOutboundElement, batchSize)
-		packets     = make([]*network.Packet, batchSize)
+		packets     = make([]*network.Packet, 0, batchSize)
 		elemsByPeer = make(map[*Peer]*QueueOutboundElementsContainer, batchSize)
-		count       int
 		offset      = MessageTransportHeaderSize
 	)
 
 	for i := range elems {
 		elems[i] = transport.NewOutboundElement()
-		packets[i] = elems[i].packet
 	}
 	defer func() {
 		for _, elem := range elems {
 			if elem != nil {
-				elem.packet.Release()
+				if elem.packet != nil {
+					elem.packet.Release()
+					elem.packet = nil
+				}
 				transport.PutOutboundElement(elem)
 			}
 		}
@@ -288,13 +290,15 @@ func (transport *Transport) RoutineReadFromNIC() {
 
 	for {
 		// read packets
-		count, readErr = transport.nic.nic.Read(transport.ctx, packets, offset)
-		for i := 0; i < count; i++ {
+		packets, readErr = transport.nic.nic.Read(transport.ctx, packets, offset)
+		for i := range packets {
 			if packets[i].Size < 1 {
 				continue
 			}
 
 			elem := elems[i]
+			elem.packet = packets[i]
+			packets[i] = nil
 
 			// lookup peer
 			var peer *Peer
@@ -343,7 +347,6 @@ func (transport *Transport) RoutineReadFromNIC() {
 			}
 			elemsForPeer.elems = append(elemsForPeer.elems, elem)
 			elems[i] = transport.NewOutboundElement()
-			packets[i] = elems[i].packet
 		}
 
 		for peer, elemsForPeer := range elemsByPeer {
@@ -356,7 +359,10 @@ func (transport *Transport) RoutineReadFromNIC() {
 				}
 			} else {
 				for _, elem := range elemsForPeer.elems {
-					elem.packet.Release()
+					if elem.packet != nil {
+						elem.packet.Release()
+						elem.packet = nil
+					}
 					transport.PutOutboundElement(elem)
 				}
 				transport.PutOutboundElementsContainer(elemsForPeer)
@@ -387,6 +393,7 @@ func (peer *Peer) StagePackets(elems *QueueOutboundElementsContainer) {
 		case tooOld := <-peer.queue.staged:
 			for _, elem := range tooOld.elems {
 				elem.packet.Release()
+				elem.packet = nil
 				peer.transport.PutOutboundElement(elem)
 			}
 			peer.transport.PutOutboundElementsContainer(tooOld)
@@ -449,6 +456,7 @@ top:
 			} else {
 				for _, elem := range elemsContainer.elems {
 					elem.packet.Release()
+					elem.packet = nil
 					peer.transport.PutOutboundElement(elem)
 				}
 				peer.transport.PutOutboundElementsContainer(elemsContainer)
@@ -469,6 +477,7 @@ func (peer *Peer) FlushStagedPackets() {
 		case elemsContainer := <-peer.queue.staged:
 			for _, elem := range elemsContainer.elems {
 				elem.packet.Release()
+				elem.packet = nil
 				peer.transport.PutOutboundElement(elem)
 			}
 			peer.transport.PutOutboundElementsContainer(elemsContainer)
@@ -568,6 +577,7 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 			elemsContainer.Lock()
 			for _, elem := range elemsContainer.elems {
 				elem.packet.Release()
+				elem.packet = nil
 				transport.PutOutboundElement(elem)
 			}
 			continue
@@ -590,6 +600,7 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 		}
 		for _, elem := range elemsContainer.elems {
 			elem.packet.Release()
+			elem.packet = nil
 			transport.PutOutboundElement(elem)
 		}
 		transport.PutOutboundElementsContainer(elemsContainer)

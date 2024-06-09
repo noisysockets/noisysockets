@@ -224,17 +224,21 @@ func (d *discardingInterface) Close() error {
 	return nil
 }
 
-func (d *discardingInterface) Read(ctx context.Context, packets []*network.Packet, offset int) (int, error) {
+func (d *discardingInterface) Read(ctx context.Context, packets []*network.Packet, offset int) ([]*network.Packet, error) {
 	if d.closed {
-		return 0, net.ErrClosed
+		return nil, net.ErrClosed
 	}
 
 	time.Sleep(10 * time.Millisecond)
 
-	return 0, nil
+	return nil, nil
 }
 
 func (discardingInterface) Write(ctx context.Context, packets []*network.Packet) (int, error) {
+	for i, pkt := range packets {
+		pkt.Release()
+		packets[i] = nil
+	}
 	return 0, nil
 }
 

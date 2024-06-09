@@ -173,7 +173,7 @@ func (nic *NoisySocketsInterface) BatchSize() int {
 	return nic.pipe.BatchSize()
 }
 
-func (nic *NoisySocketsInterface) Read(ctx context.Context, packets []*network.Packet, offset int) (n int, err error) {
+func (nic *NoisySocketsInterface) Read(ctx context.Context, packets []*network.Packet, offset int) ([]*network.Packet, error) {
 	return nic.pipe.Read(ctx, packets, offset)
 }
 
