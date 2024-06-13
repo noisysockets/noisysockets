@@ -77,7 +77,7 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 	packetPool := network.NewPacketPool(0, false)
 
 	ctx := context.Background()
-	nic, err := NewNoisySocketsInterface(ctx, logger, *conf, packetPool)
+	nic, err := NewInterface(ctx, logger, *conf, packetPool)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create interface: %w", err)
 	}

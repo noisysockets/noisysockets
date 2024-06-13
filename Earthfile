@@ -27,7 +27,7 @@ test:
   END
   WORKDIR /workspace/examples
   WITH DOCKER
-    RUN for example in $(find . -name 'main.go'); do \
+    RUN --privileged for example in $(find . -name 'main.go'); do \
         go run "$example" || exit 1; \
       done
   END
@@ -44,5 +44,5 @@ examples:
   SAVE ARTIFACT /workspace/dist AS LOCAL dist
 
 tools:
-  RUN apt update && apt install -y ca-certificates curl jq
+  RUN apt update && apt install -y ca-certificates curl jq iproute2
   RUN curl -fsSL https://get.docker.com | bash

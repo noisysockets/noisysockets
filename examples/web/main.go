@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+// Package main demonstrates how to create a simple web server and a client that
+// connects to the server using noisysockets.
 package main
 
 import (

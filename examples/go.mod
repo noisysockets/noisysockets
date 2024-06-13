@@ -5,9 +5,12 @@ go 1.22.0
 replace github.com/noisysockets/noisysockets => ../
 
 require (
-	github.com/noisysockets/network v0.17.0
+	github.com/noisysockets/network v0.19.0
 	github.com/noisysockets/noisysockets v0.0.0-00010101000000-000000000000
 	github.com/testcontainers/testcontainers-go v0.30.0
+	github.com/vishvananda/netlink v1.2.1-beta.2
+	github.com/vishvananda/netns v0.0.4
+	golang.org/x/sync v0.7.0
 )
 
 require (
@@ -45,7 +48,7 @@ require (
 	github.com/moby/term v0.5.0 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/noisysockets/netstack v0.8.0 // indirect
-	github.com/noisysockets/netutil v0.7.0 // indirect
+	github.com/noisysockets/netutil v0.8.1 // indirect
 	github.com/noisysockets/pinger v0.4.2 // indirect
 	github.com/noisysockets/resolver v0.12.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
@@ -66,7 +69,6 @@ require (
 	golang.org/x/exp v0.0.0-20230510235704-dd950f8aeaea // indirect
 	golang.org/x/mod v0.18.0 // indirect
 	golang.org/x/net v0.26.0 // indirect
-	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/sys v0.21.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.22.0 // indirect

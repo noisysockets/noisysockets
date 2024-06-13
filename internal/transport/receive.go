@@ -591,7 +591,7 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 			peer.timersDataReceived()
 		}
 		if len(packets) > 0 {
-			_, err := transport.nic.nic.Write(transport.ctx, packets)
+			err := transport.nic.nic.Write(transport.ctx, packets)
 			if err != nil && !transport.isClosed() {
 				logger.Error("Failed to write packets to network interface", slog.Any("error", err))
 			}

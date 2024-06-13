@@ -53,10 +53,10 @@ github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e h1:fD57ERR4JtEqsWb
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e/go.mod h1:zD1mROLANZcx1PVRCS0qkT7pwLkGfwJo4zjcN/Tysno=
 github.com/noisysockets/netstack v0.8.0 h1:dHAzuST9t4mvjHJR+8rsoq7c9ajlvYONH5EUc3e/AEw=
 github.com/noisysockets/netstack v0.8.0/go.mod h1:tt7ze5obpFYDX9aIygoEb+6p5q1FNbIfg2KcFiX65bc=
-github.com/noisysockets/netutil v0.7.0 h1:8TsnVPXrcMoFwSKneUPkicX9iZvncoMSxTmSuZlqJBM=
-github.com/noisysockets/netutil v0.7.0/go.mod h1:Pc7/e0PpurWoOGOV7iw5imxK8TCnFk/IyBauB7+8YVE=
-github.com/noisysockets/network v0.17.0 h1:w4iZrWM2XaVs2JY19ByHvNi+DvWalHjOP2WwxATS3jA=
-github.com/noisysockets/network v0.17.0/go.mod h1:HbQ9PvXGwomaFTaqcQXP8Dro3elvjgq9ZcCelURBbC0=
+github.com/noisysockets/netutil v0.8.1 h1:zso+dDjNtWFJ3RXlE4a9Y+IM0FKnvaSb+r7mQgXV3DM=
+github.com/noisysockets/netutil v0.8.1/go.mod h1:Pc7/e0PpurWoOGOV7iw5imxK8TCnFk/IyBauB7+8YVE=
+github.com/noisysockets/network v0.19.0 h1:UHnXppxCFQpHz+kwFepFhNPgGZO4vJEtF/vPtZcmTVM=
+github.com/noisysockets/network v0.19.0/go.mod h1:CYipWmHnt9mE046f7Dl/h26JRqcykoAQmLb2maVOsw8=
 github.com/noisysockets/pinger v0.4.2 h1:J+ksTzJaJcersvrAdhWGfSD1QXcroGpjO85XQZamcqE=
 github.com/noisysockets/pinger v0.4.2/go.mod h1:vURwBVmoQtKHhzmRD4MNURVfAGEeNcK/gTWojvpnsYY=
 github.com/noisysockets/resolver v0.12.0 h1:JgY5t7/AgQBnur62rl+XuCQFV1zRmGRfuLvcuj+NTBk=

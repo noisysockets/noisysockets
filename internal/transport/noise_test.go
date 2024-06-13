@@ -234,16 +234,12 @@ func (d *discardingInterface) Read(ctx context.Context, packets []*network.Packe
 	return nil, nil
 }
 
-func (discardingInterface) Write(ctx context.Context, packets []*network.Packet) (int, error) {
+func (discardingInterface) Write(ctx context.Context, packets []*network.Packet) error {
 	for i, pkt := range packets {
 		pkt.Release()
 		packets[i] = nil
 	}
-	return 0, nil
-}
-
-func (discardingInterface) Name() string {
-	return "discard0"
+	return nil
 }
 
 func (discardingInterface) MTU() int {

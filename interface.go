@@ -47,9 +47,9 @@ type NoisySocketsInterface struct {
 	resolver resolver.Resolver
 }
 
-// NewNoisySocketsInterface creates a new WireGuard interface using the provided configuration.
+// NewInterface creates a new WireGuard interface using the provided configuration.
 // pr is a peer resolver that can be used to resolve peer addresses from peer names.
-func NewNoisySocketsInterface(ctx context.Context, logger *slog.Logger, conf latestconfig.Config,
+func NewInterface(ctx context.Context, logger *slog.Logger, conf latestconfig.Config,
 	packetPool *network.PacketPool) (*NoisySocketsInterface, error) {
 	nic := &NoisySocketsInterface{
 		logger:      logger,
@@ -160,11 +160,6 @@ func (nic *NoisySocketsInterface) Close() error {
 	return nil
 }
 
-func (nic *NoisySocketsInterface) Name() string {
-	// TODO: Is there a better name for this?
-	return "wg0"
-}
-
 func (nic *NoisySocketsInterface) MTU() int {
 	return nic.pipe.MTU()
 }
@@ -177,7 +172,7 @@ func (nic *NoisySocketsInterface) Read(ctx context.Context, packets []*network.P
 	return nic.pipe.Read(ctx, packets, offset)
 }
 
-func (nic *NoisySocketsInterface) Write(ctx context.Context, packets []*network.Packet) (int, error) {
+func (nic *NoisySocketsInterface) Write(ctx context.Context, packets []*network.Packet) error {
 	return nic.pipe.Write(ctx, packets)
 }
 

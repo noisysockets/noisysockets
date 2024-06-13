@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+// Package main demonstrates how to use a noisy sockets router as an internet
+// egress node / gateway for a wireguard network.
 package main
 
 import (
@@ -19,14 +21,14 @@ import (
 func main() {
 	logger := slog.Default()
 
-	// Generate keypair for the gateway peer.
+	// Generate keypair for the router.
 	routerPrivateKey, err := types.NewPrivateKey()
 	if err != nil {
-		logger.Error("Failed to generate gateway private key", slog.Any("error", err))
+		logger.Error("Failed to generate router private key", slog.Any("error", err))
 		os.Exit(1)
 	}
 
-	// Get the public key for the gateway peer.
+	// Get the public key for the router.
 	routerPublicKey := routerPrivateKey.Public()
 
 	// Generate keypair for our client peer.
@@ -36,12 +38,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Usually this would be a VPN server running on a remote host. But for the
-	// sake of this example, we'll spin up a local container running WireGuard.
+	// Usually this would be a VPN server running on a remote host.
 	ctx := context.Background()
 	routerEndpoint, stopRouter, err := router.Start(ctx, routerPrivateKey, clientPrivateKey.Public())
 	if err != nil {
-		logger.Error("Failed to start wireguard router", slog.Any("error", err))
+		logger.Error("Failed to start noisy sockets router", slog.Any("error", err))
 		os.Exit(1)
 	}
 	defer stopRouter()
@@ -58,17 +59,17 @@ func main() {
 		},
 		Routes: []latestconfig.RouteConfig{
 			{
-				// Route all IPv4 traffic through the gateway.
+				// Route all IPv4 traffic through the router.
 				Destination: "0.0.0.0/0",
-				Via:         "gateway",
+				Via:         "router",
 			},
 		},
 		Peers: []latestconfig.PeerConfig{
 			{
-				Name:      "gateway",
+				Name:      "router",
 				PublicKey: routerPublicKey.String(),
 				Endpoint:  routerEndpoint,
-				// Normally we wouldn't need to give the gateway peer any IPs, but
+				// Normally we wouldn't need to give the router any IPs, but
 				// since its doing dual duty as the DNS server, we need to give it
 				// a routable IP.
 				IPs: []string{"100.64.0.1"},
@@ -88,7 +89,7 @@ func main() {
 	client := *http.DefaultClient
 	client.Transport = transport
 
-	// Make a request to a public address to verify that our network/gateway is working.
+	// Make a request to a public address to verify that our router is working.
 	resp, err := client.Get("https://icanhazip.com")
 	if err != nil {
 		logger.Error("Failed to make request", slog.Any("error", err))
@@ -101,7 +102,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Print the response body (in this case the public ip of the gateway).
+	// Print the response body (in this case the public ip of the router).
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Error("Failed to read response body", slog.Any("error", err))
