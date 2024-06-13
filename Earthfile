@@ -44,5 +44,5 @@ examples:
   SAVE ARTIFACT /workspace/dist AS LOCAL dist
 
 tools:
-  RUN apt update && apt install -y ca-certificates curl jq iproute2
+  RUN apt update && apt install -y ca-certificates curl jq
   RUN curl -fsSL https://get.docker.com | bash

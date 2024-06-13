@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-// Package main demonstrates how to use a noisy sockets router as an internet
-// egress node / gateway for a wireguard network.
+// Package main demonstrates how to use a Noisy Sockets router as an internet
+// egress node / gateway for a WireGuard network.
 package main
 
 import (
@@ -47,7 +47,7 @@ func main() {
 	}
 	defer stopRouter()
 
-	// Create a network for our "client" peer.
+	// Create a network for our client peer.
 	net, err := noisysockets.OpenNetwork(logger, &latestconfig.Config{
 		PrivateKey: clientPrivateKey.String(),
 		IPs: []string{
@@ -89,7 +89,7 @@ func main() {
 	client := *http.DefaultClient
 	client.Transport = transport
 
-	// Make a request to a public address to verify that our router is working.
+	// Make a request to a public address to verify that the router is working.
 	resp, err := client.Get("https://icanhazip.com")
 	if err != nil {
 		logger.Error("Failed to make request", slog.Any("error", err))
@@ -102,7 +102,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Print the response body (in this case the public ip of the router).
+	// Print the response body (in this case the public IP of the router).
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Error("Failed to read response body", slog.Any("error", err))
