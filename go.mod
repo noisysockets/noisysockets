@@ -6,7 +6,7 @@ require (
 	github.com/miekg/dns v1.1.59
 	github.com/neilotoole/slogt v1.1.0
 	github.com/noisysockets/netutil v0.8.1
-	github.com/noisysockets/network v0.19.0
+	github.com/noisysockets/network v0.20.0
 	github.com/noisysockets/resolver v0.12.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/crypto v0.24.0

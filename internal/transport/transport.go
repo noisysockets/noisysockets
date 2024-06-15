@@ -322,19 +322,32 @@ func (transport *Transport) SetPrivateKey(sk types.NoisePrivateKey) {
 	}
 }
 
-func NewTransport(ctx context.Context, logger *slog.Logger, nic network.Interface, bind conn.Bind, packetPool *network.PacketPool) *Transport {
-	t := new(Transport)
+func NewTransport(ctx context.Context, logger *slog.Logger, nic network.Interface, bind conn.Bind, packetPool *network.PacketPool) (*Transport, error) {
+	ctx, cancel := context.WithCancel(ctx)
+
+	t := &Transport{
+		ctx:    ctx,
+		cancel: cancel,
+		logger: logger,
+		closed: make(chan struct{}),
+	}
+
 	t.state.state.Store(uint32(transportStateDown))
-	t.closed = make(chan struct{})
-	t.logger = logger
-	t.ctx, t.cancel = context.WithCancel(ctx)
 	t.net.bind = bind
-	t.nic.nic = nic
-	t.nic.mtu.Store(int32(t.nic.nic.MTU()))
 	t.peers.keyMap = make(map[types.NoisePublicKey]*Peer)
 	t.allowedips = triemap.New[*Peer]()
 	t.rate.limiter.Init()
 	t.indexTable.Init()
+
+	mtu, err := nic.MTU()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get MTU: %w", err)
+	}
+
+	t.nic.nic = nic
+	t.nic.mtu.Store(int32(mtu))
+
+	// Create pools
 
 	t.pool.packets = packetPool
 	t.PopulatePools()
@@ -360,7 +373,7 @@ func NewTransport(ctx context.Context, logger *slog.Logger, nic network.Interfac
 	t.queue.encryption.wg.Add(1)
 	go t.RoutineReadFromNIC()
 
-	return t
+	return t, nil
 }
 
 // BatchSize returns the BatchSize for the transport as a whole which is the max of

@@ -111,13 +111,16 @@ func NewInterface(ctx context.Context, logger *slog.Logger, conf latestconfig.Co
 		PacketPool: packetPool,
 	})
 
-	// TODO: Refactor the transport to directly implement network.Interface.
-	// Will then be able to get rid of the pipe (and the additional copy).
-	nic.transport = transport.NewTransport(ctx, logger, nicB, conn.NewStdNetBind(), packetPool)
+	nic.transport, err = transport.NewTransport(ctx, logger, nicB, conn.NewStdNetBind(), packetPool)
+	if err != nil {
+		_ = nic.Close()
+		return nil, fmt.Errorf("failed to create transport: %w", err)
+	}
 
 	nic.transport.SetPrivateKey(privateKey)
 
 	if err := nic.transport.UpdatePort(conf.ListenPort); err != nil {
+		_ = nic.Close()
 		return nil, fmt.Errorf("failed to update port: %w", err)
 	}
 
@@ -152,15 +155,26 @@ func NewInterface(ctx context.Context, logger *slog.Logger, conf latestconfig.Co
 func (nic *NoisySocketsInterface) Close() error {
 	nic.logger.Debug("Closing transport")
 
-	// The pipe will be closed internally by the transport.
-	if err := nic.transport.Close(); err != nil {
+	if err := nic.transport.Down(); err != nil {
 		return err
+	}
+
+	if nic.transport != nil {
+		// The pipe will be closed internally by the transport.
+		if err := nic.transport.Close(); err != nil {
+			return err
+		}
+	} else {
+		// If the transport was never created, close the pipe manually.
+		if err := nic.pipe.Close(); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func (nic *NoisySocketsInterface) MTU() int {
+func (nic *NoisySocketsInterface) MTU() (int, error) {
 	return nic.pipe.MTU()
 }
 

@@ -64,16 +64,19 @@ func TestCurveWrappers(t *testing.T) {
 	}
 }
 
-func randTransport(t *testing.T) *Transport {
+func randTransport(t *testing.T) (*Transport, error) {
 	sk, err := types.NewPrivateKey()
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
 	logger := slogt.New(t)
-	transport := NewTransport(ctx, logger, &discardingInterface{}, conn.NewStdNetBind(), network.NewPacketPool(0, false))
+	transport, err := NewTransport(ctx, logger, &discardingInterface{}, conn.NewStdNetBind(), network.NewPacketPool(0, false))
+	if err != nil {
+		return nil, err
+	}
 	transport.SetPrivateKey(sk)
-	return transport
+	return transport, nil
 }
 
 func assertNil(t *testing.T, err error) {
@@ -89,8 +92,11 @@ func assertEqual(t *testing.T, a, b []byte) {
 }
 
 func TestNoiseHandshake(t *testing.T) {
-	trans1 := randTransport(t)
-	trans2 := randTransport(t)
+	trans1, err := randTransport(t)
+	require.NoError(t, err)
+
+	trans2, err := randTransport(t)
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		require.NoError(t, trans1.Close())
@@ -242,8 +248,8 @@ func (discardingInterface) Write(ctx context.Context, packets []*network.Packet)
 	return nil
 }
 
-func (discardingInterface) MTU() int {
-	return 1420
+func (discardingInterface) MTU() (int, error) {
+	return 1280, nil
 }
 
 func (discardingInterface) BatchSize() int {
