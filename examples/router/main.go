@@ -9,11 +9,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
 	"strings"
 
 	"github.com/noisysockets/noisysockets"
-	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha3"
 	"github.com/noisysockets/noisysockets/examples/util/router"
 	"github.com/noisysockets/noisysockets/types"
 )
@@ -50,17 +51,15 @@ func main() {
 	// Create a network for our client peer.
 	net, err := noisysockets.OpenNetwork(logger, &latestconfig.Config{
 		PrivateKey: clientPrivateKey.String(),
-		IPs: []string{
-			"100.64.0.2",
-		},
+		IPs:        []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 		DNS: &latestconfig.DNSConfig{
 			Protocol: latestconfig.DNSProtocolTCP,
-			Servers:  []string{"100.64.0.1"},
+			Servers:  []types.MaybeAddrPort{types.MustParseMaybeAddrPort("100.64.0.1")},
 		},
 		Routes: []latestconfig.RouteConfig{
 			{
 				// Route all IPv4 traffic through the router.
-				Destination: "0.0.0.0/0",
+				Destination: netip.MustParsePrefix("0.0.0.0/0"),
 				Via:         "router",
 			},
 		},
@@ -72,7 +71,7 @@ func main() {
 				// Normally we wouldn't need to give the router any IPs, but
 				// since its doing dual duty as the DNS server, we need to give it
 				// a routable IP.
-				IPs: []string{"100.64.0.1"},
+				IPs: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 			},
 		},
 	})

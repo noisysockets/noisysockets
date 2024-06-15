@@ -5,6 +5,9 @@ privateKey: SFN1gntnAutVFefwrPDlM1W2/LGWaRSn2hq06TvL2GY=
 mtu: 1420
 ips:
 - 100.64.0.3
+dns:
+  servers:
+  - 1.1.1.1
 routes:
 - destination: 0.0.0.0/0
   via: gateway

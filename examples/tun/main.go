@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	stdnet "net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -23,7 +24,7 @@ import (
 	"github.com/noisysockets/network"
 	"github.com/noisysockets/network/tun"
 	"github.com/noisysockets/noisysockets"
-	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha3"
 	"github.com/noisysockets/noisysockets/examples/util/router"
 	"github.com/noisysockets/noisysockets/types"
 	"github.com/vishvananda/netlink"
@@ -85,19 +86,18 @@ func parentMain(logger *slog.Logger) error {
 	defer stopRouter()
 
 	// Create an interface for our client peer.
-	wgNic, err := noisysockets.NewInterface(ctx, logger, latestconfig.Config{
+	packetPool := network.NewPacketPool(0, false)
+	wgNic, err := noisysockets.NewInterface(ctx, logger, packetPool, &latestconfig.Config{
 		PrivateKey: clientPrivateKey.String(),
-		IPs: []string{
-			"100.64.0.2",
-		},
+		IPs:        []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 		DNS: &latestconfig.DNSConfig{
 			Protocol: latestconfig.DNSProtocolTCP,
-			Servers:  []string{"100.64.0.1"},
+			Servers:  []types.MaybeAddrPort{types.MustParseMaybeAddrPort("100.64.0.1")},
 		},
 		Routes: []latestconfig.RouteConfig{
 			// Route all traffic through the router.
-			{Destination: "0.0.0.0/0", Via: "router"},
-			{Destination: "::/0", Via: "router"},
+			{Destination: netip.MustParsePrefix("0.0.0.0/0"), Via: "router"},
+			{Destination: netip.MustParsePrefix("::/0"), Via: "router"},
 		},
 		Peers: []latestconfig.PeerConfig{
 			{
@@ -107,10 +107,10 @@ func parentMain(logger *slog.Logger) error {
 				// Normally we wouldn't need to give the router any IPs, but
 				// since its doing dual duty as the DNS server, we need to give it
 				// a routable IP.
-				IPs: []string{"100.64.0.1"},
+				IPs: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 			},
 		},
-	}, network.NewPacketPool(0, false))
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create WireGuard interface: %w", err)
 	}

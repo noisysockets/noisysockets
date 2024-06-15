@@ -11,10 +11,10 @@ import (
 
 	stdnet "net"
 
-	"github.com/noisysockets/noisysockets/config"
-	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
+	"github.com/noisysockets/noisysockets/config/v1alpha2"
 	"github.com/noisysockets/noisysockets/types"
 	"github.com/testcontainers/testcontainers-go"
+	"gopkg.in/yaml.v3"
 )
 
 // Start starts a userspace WireGuard router in a Docker container.
@@ -55,26 +55,33 @@ func Start(ctx context.Context, privatekey types.NoisePrivateKey, clientPublicKe
 		err = fmt.Errorf("failed to create config file: %w", err)
 		return
 	}
+	defer confFile.Close()
 
-	err = config.ToYAML(confFile, &latestconfig.Config{
+	routerConf := &v1alpha2.Config{
 		ListenPort: 51820,
 		PrivateKey: privatekey.String(),
 		IPs:        []string{"100.64.0.1"},
-		Peers: []latestconfig.PeerConfig{
+		Peers: []v1alpha2.PeerConfig{
 			{
 				PublicKey: clientPublicKey.String(),
 				IPs:       []string{"100.64.0.2"},
 			},
 		},
-	})
+	}
+	routerConf.PopulateTypeMeta()
+
+	// Not using [config.ToYAML] here because we don't want to automatically migrate
+	// the config to the latest version (can cause a circular dependency issue
+	// with config version changes).
+	err = yaml.NewEncoder(confFile).Encode(routerConf)
 	_ = confFile.Close()
 	if err != nil {
-		err = fmt.Errorf("failed to write config: %w", err)
+		err = fmt.Errorf("failed to marshal config: %w", err)
 		return
 	}
 
 	wgReq := testcontainers.ContainerRequest{
-		Image:        "ghcr.io/noisysockets/nsh:v0.8.1",
+		Image:        "ghcr.io/noisysockets/nsh:v0.8.5",
 		ExposedPorts: []string{"51820/udp"},
 		Cmd:          []string{"up", "--enable-dns", "--enable-router"},
 		Files: []testcontainers.ContainerFile{

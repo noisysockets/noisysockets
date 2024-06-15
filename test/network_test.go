@@ -17,6 +17,7 @@ import (
 	"io"
 	stdnet "net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +29,7 @@ import (
 	"github.com/neilotoole/slogt"
 	"github.com/noisysockets/noisysockets"
 	"github.com/noisysockets/noisysockets/config"
-	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha3"
 	"github.com/noisysockets/noisysockets/types"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -69,11 +70,11 @@ func TestNetwork(t *testing.T) {
 		conf := latestconfig.Config{
 			Name:       "tcp-server",
 			PrivateKey: tcpServerPrivateKey.String(),
-			IPs:        []string{"100.64.0.2"},
+			IPs:        []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 			Peers: []latestconfig.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.Public().String(),
-					IPs:       []string{"100.64.0.1"},
+					IPs:       []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 				},
 			},
 		}
@@ -122,11 +123,11 @@ func TestNetwork(t *testing.T) {
 		conf := latestconfig.Config{
 			Name:       "udp-server",
 			PrivateKey: udpServerPrivateKey.String(),
-			IPs:        []string{"100.64.0.3"},
+			IPs:        []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 			Peers: []latestconfig.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.Public().String(),
-					IPs:       []string{"100.64.0.1"},
+					IPs:       []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 				},
 			},
 		}
@@ -179,19 +180,19 @@ func TestNetwork(t *testing.T) {
 	conf := latestconfig.Config{
 		Name:       "client",
 		PrivateKey: clientPrivateKey.String(),
-		IPs:        []string{"100.64.0.1"},
+		IPs:        []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "tcp-server",
 				PublicKey: tcpServerPrivateKey.Public().String(),
 				Endpoint:  stdnet.JoinHostPort("localhost", fmt.Sprint(tcpServerPort)),
-				IPs:       []string{"100.64.0.2"},
+				IPs:       []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 			},
 			{
 				Name:      "udp-server",
 				PublicKey: udpServerPrivateKey.Public().String(),
 				Endpoint:  stdnet.JoinHostPort("localhost", fmt.Sprint(udpServerPort)),
-				IPs:       []string{"100.64.0.3"},
+				IPs:       []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 			}},
 	}
 
@@ -271,11 +272,11 @@ func TestAddAndRemovePeer(t *testing.T) {
 		conf := latestconfig.Config{
 			Name:       "server1",
 			PrivateKey: server1PrivateKey.String(),
-			IPs:        []string{"100.64.0.2"},
+			IPs:        []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 			Peers: []latestconfig.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.Public().String(),
-					IPs:       []string{"100.64.0.1"},
+					IPs:       []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 				},
 			},
 		}
@@ -326,11 +327,11 @@ func TestAddAndRemovePeer(t *testing.T) {
 		conf := latestconfig.Config{
 			Name:       "server2",
 			PrivateKey: server2PrivateKey.String(),
-			IPs:        []string{"100.64.0.3"},
+			IPs:        []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 			Peers: []latestconfig.PeerConfig{
 				{
 					PublicKey: clientPrivateKey.Public().String(),
-					IPs:       []string{"100.64.0.1"},
+					IPs:       []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 				},
 			},
 		}
@@ -382,13 +383,13 @@ func TestAddAndRemovePeer(t *testing.T) {
 	conf := latestconfig.Config{
 		Name:       "client",
 		PrivateKey: clientPrivateKey.String(),
-		IPs:        []string{"100.64.0.1"},
+		IPs:        []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "server1",
 				PublicKey: server1PrivateKey.Public().String(),
 				Endpoint:  stdnet.JoinHostPort("localhost", fmt.Sprint(server1Port)),
-				IPs:       []string{"100.64.0.2"},
+				IPs:       []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 			},
 		},
 	}
@@ -427,7 +428,7 @@ func TestAddAndRemovePeer(t *testing.T) {
 		Name:      "server2",
 		PublicKey: server2PrivateKey.Public().String(),
 		Endpoint:  stdnet.JoinHostPort("localhost", fmt.Sprint(server2Port)),
-		IPs:       []string{"100.64.0.3"},
+		IPs:       []netip.Addr{netip.MustParseAddr("100.64.0.3")},
 	})
 	require.NoError(t, err)
 

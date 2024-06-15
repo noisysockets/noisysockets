@@ -23,7 +23,8 @@ import (
 	"github.com/noisysockets/netutil/ptr"
 	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets/config"
-	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
+	configtypes "github.com/noisysockets/noisysockets/config/types"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha3"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/transport"
 	"github.com/noisysockets/noisysockets/types"
@@ -38,6 +39,7 @@ type NoisySocketsInterface struct {
 	logger      *slog.Logger
 	pipe        network.Interface
 	transport   *transport.Transport
+	subnet      *netip.Prefix
 	domain      string
 	nameForPeer map[types.NoisePublicKey]string
 	// The underlying resolver that maps peer names to IP addresses.
@@ -49,11 +51,17 @@ type NoisySocketsInterface struct {
 
 // NewInterface creates a new WireGuard interface using the provided configuration.
 // pr is a peer resolver that can be used to resolve peer addresses from peer names.
-func NewInterface(ctx context.Context, logger *slog.Logger, conf latestconfig.Config,
-	packetPool *network.PacketPool) (*NoisySocketsInterface, error) {
+func NewInterface(ctx context.Context, logger *slog.Logger, packetPool *network.PacketPool,
+	versionedConf configtypes.Config) (*NoisySocketsInterface, error) {
+	conf, err := config.MigrateToLatest(versionedConf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to migrate config: %w", err)
+	}
+
 	nic := &NoisySocketsInterface{
 		logger:      logger,
 		nameForPeer: make(map[types.NoisePublicKey]string),
+		subnet:      conf.Subnet,
 	}
 
 	var privateKey types.NoisePrivateKey
@@ -68,7 +76,6 @@ func NewInterface(ctx context.Context, logger *slog.Logger, conf latestconfig.Co
 		nic.domain = dns.Fqdn(conf.DNS.Domain)
 	}
 
-	var err error
 	nic.peerNamesResolver, err = resolver.Hosts(&resolver.HostsResolverConfig{
 		DialContext: func(ctx context.Context, network, address string) (stdnet.Conn, error) {
 			// Used for preferred address ordering so doesn't matter initially.
@@ -90,13 +97,16 @@ func NewInterface(ctx context.Context, logger *slog.Logger, conf latestconfig.Co
 
 	// Add our own addresses to the resolver.
 	if conf.Name != "" {
-		addrs, err := util.ParseAddrList(conf.IPs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse IP addresses: %w", err)
+		if nic.subnet != nil {
+			for _, addr := range conf.IPs {
+				if !nic.subnet.Contains(addr) {
+					return nil, fmt.Errorf("IP address %s is not in network subnet %s", addr, nic.subnet)
+				}
+			}
 		}
 
 		nic.nameForPeer[publicKey] = conf.Name
-		nic.peerNamesResolver.AddHost(resolverutil.Join(conf.Name, nic.domain), addrs...)
+		nic.peerNamesResolver.AddHost(resolverutil.Join(conf.Name, nic.domain), conf.IPs...)
 	}
 
 	mtu := conf.MTU
@@ -205,26 +215,32 @@ func (nic *NoisySocketsInterface) AddPeer(peerConf latestconfig.PeerConfig) erro
 	nic.logger.Debug("Adding peer",
 		slog.String("name", peerConf.Name),
 		slog.String("peer", publicKey.DisplayString()),
-		slog.String("ips", strings.Join(peerConf.IPs, ",")),
+		slog.String("ips", strings.Join(util.Strings(peerConf.IPs), ",")),
 		slog.String("endpoint", peerConf.Endpoint))
+
+	if nic.subnet != nil {
+		for _, addr := range peerConf.IPs {
+			if !nic.subnet.Contains(addr) {
+				return fmt.Errorf("IP address %s is not in network subnet %s", addr, nic.subnet)
+			}
+		}
+	}
 
 	peer, err := nic.transport.NewPeer(publicKey)
 	if err != nil {
 		return fmt.Errorf("failed to create peer: %w", err)
 	}
 
-	// Regularly send keepalives to the peer to keep NAT mappings valid.
-	// This could be configurable but I think it's a good default to avoid footguns.
-	peer.SetKeepAliveInterval(25 * time.Second) // TODO: make this configurable?
-
-	peerAddrs, err := util.ParseAddrList(peerConf.IPs)
-	if err != nil {
-		nic.transport.RemovePeer(publicKey)
-		return fmt.Errorf("failed to parse peer addresses: %w", err)
+	if peerConf.PersistentKeepalive != nil {
+		peer.SetKeepAliveInterval(time.Duration(*peerConf.PersistentKeepalive) * time.Second)
+	} else {
+		// Regularly send keepalives to the peer to keep NAT mappings valid.
+		// Default to 25 seconds.
+		peer.SetKeepAliveInterval(25 * time.Second)
 	}
 
 	// Set the peer's allowed IPs.
-	for _, addr := range peerAddrs {
+	for _, addr := range peerConf.IPs {
 		peer.AddAllowedIP(netip.PrefixFrom(addr, 8*len(addr.AsSlice())))
 	}
 
@@ -263,7 +279,7 @@ func (nic *NoisySocketsInterface) AddPeer(peerConf latestconfig.PeerConfig) erro
 	// Add the peer to the resolver (if it has a name).
 	if peerConf.Name != "" {
 		nic.nameForPeer[publicKey] = peerConf.Name
-		nic.peerNamesResolver.AddHost(resolverutil.Join(peerConf.Name, nic.domain), peerAddrs...)
+		nic.peerNamesResolver.AddHost(resolverutil.Join(peerConf.Name, nic.domain), peerConf.IPs...)
 	}
 
 	return nil
@@ -283,13 +299,8 @@ func (nic *NoisySocketsInterface) RemovePeer(publicKey types.NoisePublicKey) {
 // AddRoute adds a route to the WireGuard interface.
 func (nic *NoisySocketsInterface) AddRoute(ctx context.Context, routeConf latestconfig.RouteConfig) error {
 	nic.logger.Debug("Adding route",
-		slog.String("destination", routeConf.Destination),
+		slog.String("destination", routeConf.Destination.String()),
 		slog.String("via", routeConf.Via))
-
-	destination, err := netip.ParsePrefix(routeConf.Destination)
-	if err != nil {
-		return fmt.Errorf("failed to parse route destination: %w", err)
-	}
 
 	addrs, err := nic.resolver.LookupNetIP(ctx, "ip", routeConf.Via)
 	if err != nil {
@@ -305,7 +316,7 @@ func (nic *NoisySocketsInterface) AddRoute(ctx context.Context, routeConf latest
 			continue
 		}
 
-		peer.AddAllowedIP(destination)
+		peer.AddAllowedIP(routeConf.Destination)
 
 		return nil
 	}

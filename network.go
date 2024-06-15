@@ -19,10 +19,10 @@ import (
 	"github.com/noisysockets/netutil/ptr"
 	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets/config"
-	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
+	configtypes "github.com/noisysockets/noisysockets/config/types"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha3"
 	"github.com/noisysockets/noisysockets/internal/transport"
 	"github.com/noisysockets/noisysockets/types"
-	"github.com/noisysockets/noisysockets/util"
 	"github.com/noisysockets/resolver"
 )
 
@@ -39,7 +39,12 @@ type NoisySocketsNetwork struct {
 // OpenNetwork creates a new network using the provided configuration.
 // The returned network is a userspace WireGuard peer that exposes
 // Dial() and Listen() methods compatible with the net package.
-func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsNetwork, error) {
+func OpenNetwork(logger *slog.Logger, versionedConf configtypes.Config) (*NoisySocketsNetwork, error) {
+	conf, err := config.MigrateToLatest(versionedConf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to migrate config: %w", err)
+	}
+
 	var privateKey types.NoisePrivateKey
 	if err := privateKey.UnmarshalText([]byte(conf.PrivateKey)); err != nil {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
@@ -49,22 +54,16 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 
 	logger = logger.With(slog.String("id", publicKey.DisplayString()))
 
-	addrs, err := util.ParseAddrList(conf.IPs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse IP addresses: %w", err)
-	}
-
 	// Single IPs.
 	var addrPrefixes []netip.Prefix
-	for _, addr := range addrs {
+	for _, addr := range conf.IPs {
 		addrPrefixes = append(addrPrefixes, netip.PrefixFrom(addr, 8*len(addr.AsSlice())))
 	}
 
 	var nameservers []netip.AddrPort
 	if conf.DNS != nil {
-		nameservers, err = util.ParseAddrPortList(conf.DNS.Servers)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse DNS nameservers: %w", err)
+		for _, nameserver := range conf.DNS.Servers {
+			nameservers = append(nameservers, netip.AddrPort(nameserver))
 		}
 	}
 
@@ -77,7 +76,7 @@ func OpenNetwork(logger *slog.Logger, conf *latestconfig.Config) (*NoisySocketsN
 	packetPool := network.NewPacketPool(0, false)
 
 	ctx := context.Background()
-	nic, err := NewInterface(ctx, logger, *conf, packetPool)
+	nic, err := NewInterface(ctx, logger, packetPool, versionedConf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create interface: %w", err)
 	}

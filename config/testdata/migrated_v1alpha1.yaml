@@ -1,4 +1,4 @@
-apiVersion: noisysockets.github.com/v1alpha2
+apiVersion: noisysockets.github.com/v1alpha3
 kind: Config
 listenPort: 12346
 privateKey: SFN1gntnAutVFefwrPDlM1W2/LGWaRSn2hq06TvL2GY=

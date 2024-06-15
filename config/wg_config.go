@@ -15,8 +15,10 @@ import (
 	"net/netip"
 	"strings"
 
-	"github.com/noisysockets/noisysockets/config/types"
-	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
+	configtypes "github.com/noisysockets/noisysockets/config/types"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha3"
+	"github.com/noisysockets/noisysockets/types"
+	"github.com/noisysockets/noisysockets/util"
 	"gopkg.in/ini.v1"
 )
 
@@ -39,8 +41,26 @@ func FromINI(r io.Reader) (conf *latestconfig.Config, err error) {
 
 	key, err := ifaceSection.GetKey("Address")
 	if err == nil {
-		for _, ip := range strings.Split(key.String(), ",") {
-			conf.IPs = append(conf.IPs, strings.TrimSpace(ip))
+		for _, ip := range key.Strings(",") {
+			// Attempt to parse the IP as a CIDR prefix.
+			prefix, err := netip.ParsePrefix(ip)
+			if err == nil {
+				conf.IPs = append(conf.IPs, prefix.Addr())
+
+				if !prefix.IsSingleIP() {
+					conf.Routes = append(conf.Routes, latestconfig.RouteConfig{
+						Destination: prefix,
+						Via:         prefix.Addr().String(),
+					})
+				}
+			} else {
+				addr, err := netip.ParseAddr(ip)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse IP address: %w", err)
+				}
+
+				conf.IPs = append(conf.IPs, addr)
+			}
 		}
 	}
 
@@ -54,7 +74,8 @@ func FromINI(r io.Reader) (conf *latestconfig.Config, err error) {
 		conf.MTU = key.MustInt(0)
 	} else {
 		// Given our default MTU is different from upstream wireguard,
-		// We need to explicitly set it if it's not present in the config.
+		// We need to explicitly set it to the wireguard default it's not present
+		// in the config.
 		conf.MTU = 1420
 	}
 
@@ -66,12 +87,14 @@ func FromINI(r io.Reader) (conf *latestconfig.Config, err error) {
 
 	key, err = ifaceSection.GetKey("DNS")
 	if err == nil {
-		if conf.DNS == nil {
-			conf.DNS = &latestconfig.DNSConfig{}
-		}
+		conf.DNS = &latestconfig.DNSConfig{}
 
-		for _, dns := range strings.Split(key.String(), ",") {
-			conf.DNS.Servers = append(conf.DNS.Servers, strings.TrimSpace(dns))
+		for _, dnsServerString := range key.Strings(",") {
+			var dnsServer types.MaybeAddrPort
+			if err := dnsServer.UnmarshalText([]byte(dnsServerString)); err != nil {
+				return nil, fmt.Errorf("failed to parse DNS server: %w", err)
+			}
+			conf.DNS.Servers = append(conf.DNS.Servers, dnsServer)
 		}
 	}
 
@@ -94,21 +117,23 @@ func FromINI(r io.Reader) (conf *latestconfig.Config, err error) {
 		}
 
 		var destinations []netip.Prefix
-		for _, ip := range strings.Split(key.String(), ",") {
-			ip = strings.TrimSpace(ip)
-
+		for _, ip := range key.Strings(",") {
 			// is the ip a prefix?
 			prefix, err := netip.ParsePrefix(ip)
 			if err == nil {
 				if prefix.IsSingleIP() {
-					peerConf.IPs = append(peerConf.IPs, prefix.Addr().String())
+					peerConf.IPs = append(peerConf.IPs, prefix.Addr())
 				} else {
 					destinations = append(destinations, prefix)
 				}
-				continue
-			}
+			} else {
+				addr, err := netip.ParseAddr(ip)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse oeer IP address: %w", err)
+				}
 
-			peerConf.IPs = append(peerConf.IPs, ip)
+				peerConf.IPs = append(peerConf.IPs, addr)
+			}
 		}
 
 		for _, prefix := range destinations {
@@ -118,7 +143,7 @@ func FromINI(r io.Reader) (conf *latestconfig.Config, err error) {
 			}
 
 			conf.Routes = append(conf.Routes, latestconfig.RouteConfig{
-				Destination: prefix.String(),
+				Destination: prefix,
 				Via:         peerName,
 			})
 		}
@@ -136,11 +161,11 @@ func FromINI(r io.Reader) (conf *latestconfig.Config, err error) {
 
 // ToINI writes the given config object to the given writer in the WireGuard
 // INI format. This should only be used for exporting configuration.
-func ToINI(w io.Writer, versionedConf types.Config) error {
+func ToINI(w io.Writer, versionedConf configtypes.Config) error {
 	var conf *latestconfig.Config
 	if versionedConf.GetAPIVersion() != latestconfig.APIVersion {
 		var err error
-		conf, err = migrate(versionedConf)
+		conf, err = MigrateToLatest(versionedConf)
 		if err != nil {
 			return fmt.Errorf("failed to migrate config: %w", err)
 		}
@@ -161,7 +186,7 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 		}
 	}
 
-	if _, err := ifaceSection.NewKey("Address", strings.Join(conf.IPs, ",")); err != nil {
+	if _, err := ifaceSection.NewKey("Address", strings.Join(util.Strings(conf.IPs), ",")); err != nil {
 		return fmt.Errorf("failed to create key: %w", err)
 	}
 
@@ -188,19 +213,14 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 	}
 
 	if conf.DNS != nil && len(conf.DNS.Servers) > 0 {
-		if _, err := ifaceSection.NewKey("DNS", strings.Join(conf.DNS.Servers, ",")); err != nil {
+		if _, err := ifaceSection.NewKey("DNS", strings.Join(util.Strings(conf.DNS.Servers), ",")); err != nil {
 			return fmt.Errorf("failed to create key: %w", err)
 		}
 	}
 
 	destinationsByPeer := make(map[string][]netip.Prefix)
-	for _, route := range conf.Routes {
-		destination, err := netip.ParsePrefix(route.Destination)
-		if err != nil {
-			return fmt.Errorf("failed to parse route destination: %w", err)
-		}
-
-		destinationsByPeer[route.Via] = append(destinationsByPeer[route.Via], destination)
+	for _, routeConf := range conf.Routes {
+		destinationsByPeer[routeConf.Via] = append(destinationsByPeer[routeConf.Via], routeConf.Destination)
 	}
 
 	for _, peerConf := range conf.Peers {
@@ -223,14 +243,9 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 			allowedIPs = append(allowedIPs, prefix.String())
 		}
 
-		for _, ip := range peerConf.IPs {
+		for _, addr := range peerConf.IPs {
 			var containedByPrefix bool
 			for _, prefix := range destinations {
-				addr, err := netip.ParseAddr(ip)
-				if err != nil {
-					return fmt.Errorf("failed to parse IP address: %w", err)
-				}
-
 				if prefix.Contains(addr) {
 					containedByPrefix = true
 					break
@@ -238,7 +253,7 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 			}
 
 			if !containedByPrefix {
-				allowedIPs = append(allowedIPs, ip)
+				allowedIPs = append(allowedIPs, addr.String())
 			}
 		}
 
@@ -256,7 +271,12 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 			return fmt.Errorf("failed to create key: %w", err)
 		}
 
-		if _, err := peerSection.NewKey("PersistentKeepalive", "25"); err != nil {
+		persistentKeepAlive := "25"
+		if peerConf.PersistentKeepalive != nil {
+			persistentKeepAlive = fmt.Sprintf("%d", int64((*peerConf.PersistentKeepalive).Seconds()))
+		}
+
+		if _, err := peerSection.NewKey("PersistentKeepalive", persistentKeepAlive); err != nil {
 			return fmt.Errorf("failed to create key: %w", err)
 		}
 	}

@@ -3,6 +3,7 @@ kind: Config
 listenPort: 12345
 privateKey: SFN1gntnAutVFefwrPDlM1W2/LGWaRSn2hq06TvL2GY=
 mtu: 1420
+subnet: 100.64.0.0/10
 ips:
 - 100.64.0.3
 dns:
@@ -10,11 +11,15 @@ dns:
   - 1.1.1.1
 routes:
 - destination: 0.0.0.0/0
-  via: aVHVSvdp1s9Cmw1r7XJgBSjXsSMpXdsskiuwPVYUdCk=
+  via: gateway
 peers:
-- publicKey: 6cvvZyj+EVL4DHjUKeVF7EUBfgR2mJO4php2Gdv9FVw=
+- name: server
+  publicKey: 6cvvZyj+EVL4DHjUKeVF7EUBfgR2mJO4php2Gdv9FVw=
   endpoint: 127.0.0.1:12346
   ips:
   - 100.64.0.1
-- publicKey: aVHVSvdp1s9Cmw1r7XJgBSjXsSMpXdsskiuwPVYUdCk=
+- name: gateway
+  publicKey: aVHVSvdp1s9Cmw1r7XJgBSjXsSMpXdsskiuwPVYUdCk=
   endpoint: 127.0.0.1:12347
+  ips:
+  - 100.64.0.2

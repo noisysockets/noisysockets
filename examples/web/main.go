@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"strconv"
 
@@ -17,7 +18,7 @@ import (
 
 	"github.com/noisysockets/network"
 	"github.com/noisysockets/noisysockets"
-	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha3"
 	"github.com/noisysockets/noisysockets/types"
 )
 
@@ -42,13 +43,13 @@ func main() {
 	serverConf := &latestconfig.Config{
 		Name:       "server",
 		PrivateKey: serverPrivateKey.String(),
-		IPs:        []string{"100.64.0.1"},
+		IPs:        []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 		ListenPort: 51820,
 		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "client1",
 				PublicKey: clientPrivateKey.Public().String(),
-				IPs:       []string{"100.64.0.2"},
+				IPs:       []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 			},
 		},
 	}
@@ -64,12 +65,12 @@ func main() {
 	clientNet, err := noisysockets.OpenNetwork(logger, &latestconfig.Config{
 		Name:       "client1",
 		PrivateKey: clientPrivateKey.String(),
-		IPs:        []string{"100.64.0.2"},
+		IPs:        []netip.Addr{netip.MustParseAddr("100.64.0.2")},
 		Peers: []latestconfig.PeerConfig{
 			{
 				Name:      "server",
 				PublicKey: serverPrivateKey.Public().String(),
-				IPs:       []string{"100.64.0.1"},
+				IPs:       []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 				Endpoint:  net.JoinHostPort("localhost", strconv.Itoa(int(serverConf.ListenPort))),
 			},
 		},

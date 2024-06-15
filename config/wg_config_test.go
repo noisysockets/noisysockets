@@ -37,7 +37,7 @@ func TestFromINI(t *testing.T) {
 }
 
 func TestToINI(t *testing.T) {
-	configFile, err := os.Open("testdata/config_v1alpha2.yaml")
+	configFile, err := os.Open("testdata/config_v1alpha3.yaml")
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, configFile.Close())

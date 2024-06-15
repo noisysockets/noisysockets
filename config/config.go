@@ -12,10 +12,13 @@ package config
 import (
 	"fmt"
 	"io"
+	"net/netip"
 
-	"github.com/noisysockets/noisysockets/config/types"
+	configtypes "github.com/noisysockets/noisysockets/config/types"
 	"github.com/noisysockets/noisysockets/config/v1alpha1"
-	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
+	"github.com/noisysockets/noisysockets/config/v1alpha2"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha3"
+	"github.com/noisysockets/noisysockets/types"
 	"github.com/noisysockets/noisysockets/util"
 	"gopkg.in/yaml.v3"
 )
@@ -27,15 +30,17 @@ func FromYAML(r io.Reader) (conf *latestconfig.Config, err error) {
 		return nil, fmt.Errorf("failed to read config from reader: %w", err)
 	}
 
-	var typeMeta types.TypeMeta
+	var typeMeta configtypes.TypeMeta
 	if err := yaml.Unmarshal(confBytes, &typeMeta); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal type meta from config file: %w", err)
 	}
 
-	var versionedConf types.Config
+	var versionedConf configtypes.Config
 	switch typeMeta.APIVersion {
 	case v1alpha1.APIVersion:
 		versionedConf, err = v1alpha1.GetConfigByKind(typeMeta.Kind)
+	case v1alpha2.APIVersion:
+		versionedConf, err = v1alpha2.GetConfigByKind(typeMeta.Kind)
 	case latestconfig.APIVersion:
 		versionedConf, err = latestconfig.GetConfigByKind(typeMeta.Kind)
 	default:
@@ -50,7 +55,7 @@ func FromYAML(r io.Reader) (conf *latestconfig.Config, err error) {
 	}
 
 	if versionedConf.GetAPIVersion() != latestconfig.APIVersion {
-		conf, err = migrate(versionedConf)
+		conf, err = MigrateToLatest(versionedConf)
 		if err != nil {
 			return nil, fmt.Errorf("failed to migrate config: %w", err)
 		}
@@ -58,22 +63,14 @@ func FromYAML(r io.Reader) (conf *latestconfig.Config, err error) {
 		conf = versionedConf.(*latestconfig.Config)
 	}
 
-	// TODO: validate config?
-
 	return conf, nil
 }
 
 // ToYAML writes the given config object to the given writer.
-func ToYAML(w io.Writer, versionedConf types.Config) error {
-	var conf *latestconfig.Config
-	if versionedConf.GetAPIVersion() != latestconfig.APIVersion {
-		var err error
-		conf, err = migrate(versionedConf)
-		if err != nil {
-			return fmt.Errorf("failed to migrate config: %w", err)
-		}
-	} else {
-		conf = versionedConf.(*latestconfig.Config)
+func ToYAML(w io.Writer, versionedConf configtypes.Config) error {
+	conf, err := MigrateToLatest(versionedConf)
+	if err != nil {
+		return fmt.Errorf("failed to migrate config: %w", err)
 	}
 
 	conf.PopulateTypeMeta()
@@ -85,22 +82,32 @@ func ToYAML(w io.Writer, versionedConf types.Config) error {
 	return nil
 }
 
-func migrate(versionedConf types.Config) (*latestconfig.Config, error) {
+// MigrateToLatest migrates the given config object to the latest version.
+func MigrateToLatest(versionedConf configtypes.Config) (*latestconfig.Config, error) {
 	switch conf := versionedConf.(type) {
 	case *v1alpha1.Config:
-		return migrateV1Alpha1ToV1Alpha2(conf)
+		v1alpha2Conf, err := migrateV1Alpha1ToV1Alpha2(conf)
+		if err != nil {
+			return nil, fmt.Errorf("failed to migrate v1alpha1 to v1alpha2: %w", err)
+		}
+
+		return migrateV1Alpha2ToV1Alpha3(v1alpha2Conf)
+	case *v1alpha2.Config:
+		return migrateV1Alpha2ToV1Alpha3(conf)
+	case *latestconfig.Config:
+		return conf, nil
 	default:
 		return nil, fmt.Errorf("unsupported config version: %s", versionedConf.GetAPIVersion())
 	}
 }
 
-func migrateV1Alpha1ToV1Alpha2(conf *v1alpha1.Config) (*latestconfig.Config, error) {
+func migrateV1Alpha1ToV1Alpha2(conf *v1alpha1.Config) (*v1alpha2.Config, error) {
 	interfaceAddrs, err := util.ParseAddrList(conf.IPs)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse local addresses: %w", err)
 	}
 
-	migratedConf := &latestconfig.Config{}
+	migratedConf := &v1alpha2.Config{}
 	migratedConf.PopulateTypeMeta()
 
 	migratedConf.Name = conf.Name
@@ -108,9 +115,9 @@ func migrateV1Alpha1ToV1Alpha2(conf *v1alpha1.Config) (*latestconfig.Config, err
 	migratedConf.PrivateKey = conf.PrivateKey
 	migratedConf.IPs = conf.IPs
 
-	migratedConf.Peers = make([]latestconfig.PeerConfig, len(conf.Peers))
+	migratedConf.Peers = make([]v1alpha2.PeerConfig, len(conf.Peers))
 	for i, peerConf := range conf.Peers {
-		migratedConf.Peers[i] = latestconfig.PeerConfig{
+		migratedConf.Peers[i] = v1alpha2.PeerConfig{
 			Name:      peerConf.Name,
 			PublicKey: peerConf.PublicKey,
 			Endpoint:  peerConf.Endpoint,
@@ -119,7 +126,7 @@ func migrateV1Alpha1ToV1Alpha2(conf *v1alpha1.Config) (*latestconfig.Config, err
 	}
 
 	if conf.DNSServers != nil {
-		migratedConf.DNS = &latestconfig.DNSConfig{
+		migratedConf.DNS = &v1alpha2.DNSConfig{
 			Servers: conf.DNSServers,
 		}
 	}
@@ -135,7 +142,7 @@ func migrateV1Alpha1ToV1Alpha2(conf *v1alpha1.Config) (*latestconfig.Config, err
 		}
 
 		for _, prefix := range peerConf.GatewayForCIDRs {
-			routeConf := latestconfig.RouteConfig{
+			routeConf := v1alpha2.RouteConfig{
 				Destination: prefix,
 				Via:         peerConf.PublicKey,
 			}
@@ -146,6 +153,67 @@ func migrateV1Alpha1ToV1Alpha2(conf *v1alpha1.Config) (*latestconfig.Config, err
 
 			migratedConf.Routes = append(migratedConf.Routes, routeConf)
 		}
+	}
+
+	return migratedConf, nil
+}
+
+func migrateV1Alpha2ToV1Alpha3(conf *v1alpha2.Config) (*latestconfig.Config, error) {
+	migratedConf := &latestconfig.Config{}
+	migratedConf.PopulateTypeMeta()
+
+	migratedConf.Name = conf.Name
+	migratedConf.ListenPort = conf.ListenPort
+	migratedConf.PrivateKey = conf.PrivateKey
+	migratedConf.MTU = conf.MTU
+
+	var err error
+	migratedConf.IPs, err = util.ParseAddrList(conf.IPs)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse local addresses: %w", err)
+	}
+
+	migratedConf.Peers = make([]latestconfig.PeerConfig, len(conf.Peers))
+	for i, peerConf := range conf.Peers {
+		migratedPeerConf := latestconfig.PeerConfig{
+			Name:      peerConf.Name,
+			PublicKey: peerConf.PublicKey,
+			Endpoint:  peerConf.Endpoint,
+		}
+
+		migratedPeerConf.IPs, err = util.ParseAddrList(peerConf.IPs)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse peer %q addresses: %w", peerConf.Name, err)
+		}
+
+		migratedConf.Peers[i] = migratedPeerConf
+	}
+
+	if conf.DNS != nil {
+		servers := make([]types.MaybeAddrPort, len(conf.DNS.Servers))
+		for i, server := range conf.DNS.Servers {
+			if err := servers[i].UnmarshalText([]byte(server)); err != nil {
+				return nil, fmt.Errorf("could not parse DNS server: %w", err)
+			}
+		}
+
+		migratedConf.DNS = &latestconfig.DNSConfig{
+			Domain:   conf.DNS.Domain,
+			Protocol: latestconfig.DNSProtocol(conf.DNS.Protocol),
+			Servers:  servers,
+		}
+	}
+
+	for _, routeConf := range conf.Routes {
+		destination, err := netip.ParsePrefix(routeConf.Destination)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse route destination: %w", err)
+		}
+
+		migratedConf.Routes = append(migratedConf.Routes, latestconfig.RouteConfig{
+			Destination: destination,
+			Via:         routeConf.Via,
+		})
 	}
 
 	return migratedConf, nil

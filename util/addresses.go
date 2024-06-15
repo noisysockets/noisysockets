@@ -11,7 +11,6 @@ package util
 
 import (
 	"fmt"
-	stdnet "net"
 	"net/netip"
 )
 
@@ -28,31 +27,4 @@ func ParseAddrList(addrList []string) ([]netip.Addr, error) {
 	}
 
 	return addrs, nil
-}
-
-// ParseAddrPortList parses a list of IP address and port strings and returns a list of netip.AddrPort.
-func ParseAddrPortList(addrPortList []string) ([]netip.AddrPort, error) {
-	var addrPorts []netip.AddrPort
-	for _, ipPort := range addrPortList {
-		var addrPort netip.AddrPort
-
-		// Do we have a port specified?
-		if _, _, err := stdnet.SplitHostPort(ipPort); err == nil {
-			addrPort, err = netip.ParseAddrPort(ipPort)
-			if err != nil {
-				return nil, fmt.Errorf("could not parse address: %w", err)
-			}
-		} else {
-			addr, err := netip.ParseAddr(ipPort)
-			if err != nil {
-				return nil, fmt.Errorf("could not parse address: %w", err)
-			}
-
-			addrPort = netip.AddrPortFrom(addr, 0)
-		}
-
-		addrPorts = append(addrPorts, addrPort)
-	}
-
-	return addrPorts, nil
 }
