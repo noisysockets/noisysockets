@@ -18,7 +18,7 @@ import (
 
 const APIVersion = "noisysockets.github.com/v1alpha2"
 
-// Config is the configuration for a NoisySockets network.
+// Config is the configuration for a Noisy Sockets network.
 // It is analogous to the configuration for a WireGuard interface.
 type Config struct {
 	types.TypeMeta `yaml:",inline" mapstructure:",squash"`
@@ -34,6 +34,8 @@ type Config struct {
 	// This is the protocol MTU, not the media MTU, so account for 32 bytes of
 	// overhead per packet.
 	MTU int `yaml:"mtu,omitempty" mapstructure:"mtu,omitempty"`
+	// Subnet is the CIDR block for the network.
+	Subnet string `yaml:"subnet" mapstructure:"subnet"`
 	// IPs is a list of IP addresses assigned to this peer.
 	IPs []string `yaml:"ips,omitempty" mapstructure:"ips,omitempty"`
 	// DNS is the DNS configuration for this peer.

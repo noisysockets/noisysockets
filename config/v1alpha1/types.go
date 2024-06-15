@@ -17,7 +17,7 @@ import (
 
 const APIVersion = "noisysockets.github.com/v1alpha1"
 
-// Config is the configuration for a NoisySockets network.
+// Config is the configuration for a Noisy Sockets network.
 // It is analogous to the configuration for a WireGuard interface.
 type Config struct {
 	types.TypeMeta `yaml:",inline" mapstructure:",squash"`
