@@ -39,7 +39,7 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
-	github.com/miekg/dns v1.1.59 // indirect
+	github.com/miekg/dns v1.1.61 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/patternmatcher v0.6.0 // indirect
 	github.com/moby/sys/sequential v0.5.0 // indirect
@@ -47,7 +47,7 @@ require (
 	github.com/moby/term v0.5.0 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/noisysockets/netstack v0.8.0 // indirect
-	github.com/noisysockets/netutil v0.8.1 // indirect
+	github.com/noisysockets/netutil v0.9.0 // indirect
 	github.com/noisysockets/network v0.20.2 // indirect
 	github.com/noisysockets/pinger v0.4.2 // indirect
 	github.com/noisysockets/resolver v0.12.0 // indirect

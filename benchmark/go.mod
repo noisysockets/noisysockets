@@ -27,9 +27,9 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
-	github.com/miekg/dns v1.1.59 // indirect
+	github.com/miekg/dns v1.1.61 // indirect
 	github.com/noisysockets/netstack v0.8.0 // indirect
-	github.com/noisysockets/netutil v0.8.1 // indirect
+	github.com/noisysockets/netutil v0.9.0 // indirect
 	github.com/noisysockets/pinger v0.4.2 // indirect
 	github.com/noisysockets/resolver v0.12.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect

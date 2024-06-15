@@ -3,9 +3,9 @@ module github.com/noisysockets/noisysockets
 go 1.22.0
 
 require (
-	github.com/miekg/dns v1.1.59
+	github.com/miekg/dns v1.1.61
 	github.com/neilotoole/slogt v1.1.0
-	github.com/noisysockets/netutil v0.8.1
+	github.com/noisysockets/netutil v0.9.0
 	github.com/noisysockets/network v0.20.2
 	github.com/noisysockets/resolver v0.12.0
 	github.com/stretchr/testify v1.9.0

@@ -68,14 +68,9 @@ func FromYAML(r io.Reader) (conf *latestconfig.Config, err error) {
 
 // ToYAML writes the given config object to the given writer.
 func ToYAML(w io.Writer, versionedConf configtypes.Config) error {
-	conf, err := MigrateToLatest(versionedConf)
-	if err != nil {
-		return fmt.Errorf("failed to migrate config: %w", err)
-	}
+	versionedConf.PopulateTypeMeta()
 
-	conf.PopulateTypeMeta()
-
-	if err := yaml.NewEncoder(w).Encode(conf); err != nil {
+	if err := yaml.NewEncoder(w).Encode(versionedConf); err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
