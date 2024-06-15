@@ -36,9 +36,6 @@ import (
 	"time"
 )
 
-// Use as small MTU as reasonable to avoid fragmentation, particularly on IPv6.
-const DefaultMTU = 1280
-
 const (
 	IPv4offsetTotalLength = 2
 	IPv4offsetSrc         = 12

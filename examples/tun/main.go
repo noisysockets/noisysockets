@@ -85,7 +85,7 @@ func parentMain(logger *slog.Logger) error {
 	defer stopRouter()
 
 	// Create an interface for our client peer.
-	noisySocketsNIC, err := noisysockets.NewInterface(ctx, logger, latestconfig.Config{
+	wgNic, err := noisysockets.NewInterface(ctx, logger, latestconfig.Config{
 		PrivateKey: clientPrivateKey.String(),
 		IPs: []string{
 			"100.64.0.2",
@@ -112,7 +112,7 @@ func parentMain(logger *slog.Logger) error {
 		},
 	}, network.NewPacketPool(0, false))
 	if err != nil {
-		return fmt.Errorf("failed to create noisy sockets interface: %w", err)
+		return fmt.Errorf("failed to create WireGuard interface: %w", err)
 	}
 
 	logger.Info("Creating child network namespace", slog.String("name", namespaceName))
@@ -141,7 +141,14 @@ func parentMain(logger *slog.Logger) error {
 
 	logger.Info("Creating TUN interface", slog.String("name", nicName))
 
-	tunNIC, err := tun.Create(ctx, logger, nicName, nil)
+	mtu, err := wgNic.MTU()
+	if err != nil {
+		return fmt.Errorf("failed to get MTU of WireGuard interface: %w", err)
+	}
+
+	tunNIC, err := tun.Create(ctx, logger, nicName, &tun.Configuration{
+		MTU: &mtu,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create TUN interface: %w", err)
 	}
@@ -156,7 +163,7 @@ func parentMain(logger *slog.Logger) error {
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		return network.Splice(ctx, tunNIC, noisySocketsNIC, &network.SpliceConfiguration{
+		return network.Splice(ctx, tunNIC, wgNic, &network.SpliceConfiguration{
 			PacketWriteOffset: tun.VirtioNetHdrLen,
 		})
 	})

@@ -101,7 +101,7 @@ func NewInterface(ctx context.Context, logger *slog.Logger, conf latestconfig.Co
 
 	mtu := conf.MTU
 	if mtu == 0 {
-		mtu = transport.DefaultMTU
+		mtu = config.DefaultMTU
 	}
 
 	var nicB network.Interface

@@ -14,4 +14,7 @@ const (
 	DefaultListenPort = 51820
 	// The default search domain to use for networks (if not specified).
 	DefaultDomain = "my.nzzy.net."
+	// Larger MTU's are susceptible to fragmentation on the public internet
+	// (particularly when using IPv6).
+	DefaultMTU = 1280
 )

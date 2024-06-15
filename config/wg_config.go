@@ -17,7 +17,6 @@ import (
 
 	"github.com/noisysockets/noisysockets/config/types"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha2"
-	"github.com/noisysockets/noisysockets/internal/transport"
 	"gopkg.in/ini.v1"
 )
 
@@ -177,7 +176,7 @@ func ToINI(w io.Writer, versionedConf types.Config) error {
 
 	mtu := conf.MTU
 	if mtu == 0 {
-		mtu = transport.DefaultMTU
+		mtu = DefaultMTU
 	}
 
 	if _, err := ifaceSection.NewKey("MTU", fmt.Sprintf("%d", mtu)); err != nil {
