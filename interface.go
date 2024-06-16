@@ -27,8 +27,8 @@ import (
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha3"
 	"github.com/noisysockets/noisysockets/internal/conn"
 	"github.com/noisysockets/noisysockets/internal/transport"
+	"github.com/noisysockets/noisysockets/internal/util"
 	"github.com/noisysockets/noisysockets/types"
-	"github.com/noisysockets/noisysockets/util"
 	"github.com/noisysockets/resolver"
 	resolverutil "github.com/noisysockets/resolver/util"
 )

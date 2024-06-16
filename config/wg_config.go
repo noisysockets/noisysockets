@@ -17,8 +17,8 @@ import (
 
 	configtypes "github.com/noisysockets/noisysockets/config/types"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha3"
+	"github.com/noisysockets/noisysockets/internal/util"
 	"github.com/noisysockets/noisysockets/types"
-	"github.com/noisysockets/noisysockets/util"
 	"gopkg.in/ini.v1"
 )
 

@@ -13,7 +13,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/noisysockets/noisysockets/util"
+	"github.com/noisysockets/noisysockets/internal/util"
 	"github.com/stretchr/testify/require"
 )
 

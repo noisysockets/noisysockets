@@ -18,8 +18,8 @@ import (
 	"github.com/noisysockets/noisysockets/config/v1alpha1"
 	"github.com/noisysockets/noisysockets/config/v1alpha2"
 	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha3"
+	"github.com/noisysockets/noisysockets/internal/util"
 	"github.com/noisysockets/noisysockets/types"
-	"github.com/noisysockets/noisysockets/util"
 	"gopkg.in/yaml.v3"
 )
 
