@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/noisysockets/noisysockets/config"
+	latestconfig "github.com/noisysockets/noisysockets/config/v1alpha3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,11 +26,14 @@ func TestFromYAML(t *testing.T) {
 		require.NoError(t, configFile.Close())
 	})
 
-	conf, err := config.FromYAML(configFile)
+	versionedConf, err := config.FromYAML(configFile)
 	require.NoError(t, err)
 
-	require.Equal(t, "Config", conf.GetKind())
-	require.Equal(t, "noisysockets.github.com/v1alpha3", conf.GetAPIVersion())
+	require.Equal(t, "Config", versionedConf.GetKind())
+	require.Equal(t, "noisysockets.github.com/v1alpha3", versionedConf.GetAPIVersion())
+
+	conf, ok := versionedConf.(*latestconfig.Config)
+	require.True(t, ok)
 
 	// Just check a few fields to make sure the config was parsed correctly.
 	require.Equal(t, uint16(12345), conf.ListenPort)

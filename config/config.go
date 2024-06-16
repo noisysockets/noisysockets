@@ -24,7 +24,7 @@ import (
 )
 
 // FromYAML reads the given reader and returns a config object.
-func FromYAML(r io.Reader) (conf *latestconfig.Config, err error) {
+func FromYAML(r io.Reader) (configtypes.Config, error) {
 	confBytes, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config from reader: %w", err)
@@ -54,16 +54,12 @@ func FromYAML(r io.Reader) (conf *latestconfig.Config, err error) {
 		return nil, fmt.Errorf("failed to unmarshal config from config file: %w", err)
 	}
 
-	if versionedConf.GetAPIVersion() != latestconfig.APIVersion {
-		conf, err = MigrateToLatest(versionedConf)
-		if err != nil {
-			return nil, fmt.Errorf("failed to migrate config: %w", err)
-		}
-	} else {
-		conf = versionedConf.(*latestconfig.Config)
+	versionedConf, err = MigrateToLatest(versionedConf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to migrate config: %w", err)
 	}
 
-	return conf, nil
+	return versionedConf, nil
 }
 
 // ToYAML writes the given config object to the given writer.
@@ -78,7 +74,7 @@ func ToYAML(w io.Writer, versionedConf configtypes.Config) error {
 }
 
 // MigrateToLatest migrates the given config object to the latest version.
-func MigrateToLatest(versionedConf configtypes.Config) (*latestconfig.Config, error) {
+func MigrateToLatest(versionedConf configtypes.Config) (configtypes.Config, error) {
 	switch conf := versionedConf.(type) {
 	case *v1alpha1.Config:
 		v1alpha2Conf, err := migrateV1Alpha1ToV1Alpha2(conf)
@@ -90,9 +86,10 @@ func MigrateToLatest(versionedConf configtypes.Config) (*latestconfig.Config, er
 	case *v1alpha2.Config:
 		return migrateV1Alpha2ToV1Alpha3(conf)
 	case *latestconfig.Config:
+		// Nothing to do, already at the latest version.
 		return conf, nil
 	default:
-		return nil, fmt.Errorf("unsupported config version: %s", versionedConf.GetAPIVersion())
+		return nil, fmt.Errorf("unsupported config version: %s", conf.GetAPIVersion())
 	}
 }
 

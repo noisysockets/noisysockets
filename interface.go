@@ -53,9 +53,14 @@ type NoisySocketsInterface struct {
 // pr is a peer resolver that can be used to resolve peer addresses from peer names.
 func NewInterface(ctx context.Context, logger *slog.Logger, packetPool *network.PacketPool,
 	versionedConf configtypes.Config) (*NoisySocketsInterface, error) {
-	conf, err := config.MigrateToLatest(versionedConf)
+	versionedConf, err := config.MigrateToLatest(versionedConf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to migrate config: %w", err)
+	}
+
+	conf, ok := versionedConf.(*latestconfig.Config)
+	if !ok {
+		return nil, fmt.Errorf("unexpected migrated config type, this should never happen: %T", versionedConf)
 	}
 
 	nic := &NoisySocketsInterface{

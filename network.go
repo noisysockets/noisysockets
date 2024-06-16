@@ -40,9 +40,14 @@ type NoisySocketsNetwork struct {
 // The returned network is a userspace WireGuard peer that exposes
 // Dial() and Listen() methods compatible with the net package.
 func OpenNetwork(logger *slog.Logger, versionedConf configtypes.Config) (*NoisySocketsNetwork, error) {
-	conf, err := config.MigrateToLatest(versionedConf)
+	versionedConf, err := config.MigrateToLatest(versionedConf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to migrate config: %w", err)
+	}
+
+	conf, ok := versionedConf.(*latestconfig.Config)
+	if !ok {
+		return nil, fmt.Errorf("unexpected migrated config type, this should never happen: %T", versionedConf)
 	}
 
 	var privateKey types.NoisePrivateKey

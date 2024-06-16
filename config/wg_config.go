@@ -25,13 +25,13 @@ import (
 // FromINI reads a WireGuard INI configuration from the given reader and returns
 // the equivalent config object. This should only be used for importing existing
 // configurations.
-func FromINI(r io.Reader) (conf *latestconfig.Config, err error) {
+func FromINI(r io.Reader) (configtypes.Config, error) {
 	iniConf, err := ini.LoadSources(ini.LoadOptions{AllowNonUniqueSections: true}, r)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse INI config: %w", err)
 	}
 
-	conf = &latestconfig.Config{}
+	conf := &latestconfig.Config{}
 	conf.PopulateTypeMeta()
 
 	ifaceSection := iniConf.Section("Interface")
@@ -162,15 +162,14 @@ func FromINI(r io.Reader) (conf *latestconfig.Config, err error) {
 // ToINI writes the given config object to the given writer in the WireGuard
 // INI format. This should only be used for exporting configuration.
 func ToINI(w io.Writer, versionedConf configtypes.Config) error {
-	var conf *latestconfig.Config
-	if versionedConf.GetAPIVersion() != latestconfig.APIVersion {
-		var err error
-		conf, err = MigrateToLatest(versionedConf)
-		if err != nil {
-			return fmt.Errorf("failed to migrate config: %w", err)
-		}
-	} else {
-		conf = versionedConf.(*latestconfig.Config)
+	versionedConf, err := MigrateToLatest(versionedConf)
+	if err != nil {
+		return fmt.Errorf("failed to migrate config: %w", err)
+	}
+
+	conf, ok := versionedConf.(*latestconfig.Config)
+	if !ok {
+		return fmt.Errorf("unexpected migrated config type, this should never happen: %T", versionedConf)
 	}
 
 	iniConf := ini.Empty(ini.LoadOptions{AllowNonUniqueSections: true})
