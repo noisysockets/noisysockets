@@ -6,8 +6,8 @@ require (
 	github.com/miekg/dns v1.1.61
 	github.com/neilotoole/slogt v1.1.0
 	github.com/noisysockets/netutil v0.9.0
-	github.com/noisysockets/network v0.20.2
-	github.com/noisysockets/resolver v0.12.0
+	github.com/noisysockets/network v0.20.3
+	github.com/noisysockets/resolver v0.14.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/crypto v0.24.0
 	golang.org/x/net v0.26.0
